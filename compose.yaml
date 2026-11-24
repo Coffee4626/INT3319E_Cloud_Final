@@ -1,0 +1,44 @@
+x-app: &app
+  build: .
+  image: automl:local
+  platform: linux/amd64
+  entrypoint: ["python", "-m"]
+  environment:
+    AWS_DEFAULT_REGION: us-east-1
+    AWS_ACCESS_KEY_ID: test
+    AWS_SECRET_ACCESS_KEY: test
+    AWS_ENDPOINT_URL: http://localstack:4566
+    BUCKET_NAME: automl-local
+    TABLE_NAME: automl-local
+    QUEUE_URL: http://localstack:4566/queue/us-east-1/000000000000/automl-jobs
+
+services:
+  localstack:
+    image: localstack/localstack:4.0.3
+    environment:
+      SERVICES: s3,sqs,dynamodb
+      SQS_ENDPOINT_STRATEGY: path
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+  init:
+    <<: *app
+    command: ["app.local", "init"]
+    depends_on:
+      localstack:
+        condition: service_healthy
+  api:
+    <<: *app
+    command: ["app.local"]
+    ports: ["127.0.0.1:8000:8000"]
+    depends_on:
+      init:
+        condition: service_completed_successfully
+  worker:
+    <<: *app
+    command: ["app.worker"]
+    depends_on:
+      init:
+        condition: service_completed_successfully
