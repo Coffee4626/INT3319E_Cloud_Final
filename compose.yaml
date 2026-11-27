@@ -37,6 +37,11 @@ services:
     <<: *app
     command: ["app.local"]
     ports: ["127.0.0.1:8000:8000"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
     depends_on:
       init:
         condition: service_completed_successfully
@@ -49,7 +54,9 @@ services:
   frontend:
     build: ./frontend
     ports: ["127.0.0.1:3000:80"]
-    depends_on: [api]
+    depends_on:
+      api:
+        condition: service_healthy
   inference:
     <<: *app
     profiles: [lambda]

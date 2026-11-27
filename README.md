@@ -3,12 +3,15 @@
 Ứng dụng full stack cho **CSV → preprocess → train AutoGluon trên EC2 Auto Scaling → deploy → predict**.
 Frontend React + TypeScript, backend Python, hạ tầng AWS khai báo bằng CloudFormation/SAM.
 
+**Trạng thái AWS đã triển khai:** [docs/deployment-status.md](docs/deployment-status.md).
+Storage, SQS, ECR và ASG đã có trên AWS; EC2 quota, Lambda và CloudFront đang chờ AWS Support mở quyền.
+
 ## Chạy ngay trên máy
 
 Cần Docker Desktop/Engine + Compose v2. Trên Apple Silicon, image ML chạy `linux/amd64`.
 
 ```bash
-docker compose up --build -d
+docker compose up --build -d --wait
 ```
 
 Mở **http://localhost:3000**. Chọn **Thí nghiệm mới → Dùng mẫu → Áp dụng & tiếp tục → Bắt đầu huấn luyện**.
@@ -38,6 +41,7 @@ docker compose down
 
 Hướng dẫn đầy đủ: **[docs/aws-setup.md](docs/aws-setup.md)**, gồm tài khoản/quyền, region,
 network, Cognito, build/push ECR, xác minh Auto Scaling, logs, chi phí và dọn tài nguyên.
+Chạy `python3 scripts/check_aws.py` sau khi đăng nhập CLI để kiểm tra quyền Lambda và quota EC2.
 
 ```bash
 aws configure sso
@@ -63,7 +67,7 @@ Không cần SAM CLI. AWS tài khoản thật có phát sinh phí; script không
 | Đăng nhập AWS | Cognito Hosted UI, OAuth code + PKCE, refresh token, đăng xuất |
 | Dataset | Presigned S3 upload, profile cột, preview, thiếu/trùng, thư viện phân trang |
 | Tiền xử lý | Chọn target/features, trim chuỗi, chuẩn hóa giá trị thiếu, bỏ trùng/thiếu target, bản mới bất biến |
-| Huấn luyện | Classification, regression, tự suy luận; SQS + AutoGluon/LightGBM; leaderboard, validation metric |
+| Huấn luyện | Classification, regression, tự suy luận; SQS + AutoGluon/LightGBM; leaderboard, validation metric, test metrics và confusion matrix |
 | Job lifecycle | Theo dõi trạng thái, hủy khi chờ, retry tạo job mới, lease owner, heartbeat, xử lý DLQ |
 | Scaling | EC2 ASG 0–N theo SQS; bảo vệ worker đang train; về 0 sau 15 phút idle |
 | Deployment | Mapping model trong DynamoDB, kiểm tra image digest, key riêng chỉ lưu SHA-256 |
@@ -141,7 +145,9 @@ npm run build
 - CSV UTF-8, tối đa 10 MB / 100.000 rows / 200 cột, header ≤128 ký tự; upload trực tiếp S3.
   API inline cũ (`POST /jobs` kèm `csv`) vẫn hỗ trợ, giới hạn 1 MB.
 - Tiền xử lý không fit mean/median/encoder trên toàn bộ dataset. AutoGluon xử lý feature trong train;
-  validation score chưa thay thế đánh giá bằng test set độc lập.
+  khoảng 20% dữ liệu được giữ riêng trước khi fit để đánh giá test (seed 42, stratified với classification).
+  Dataset dưới 20 dòng hoặc có lớp dưới 5 mẫu chỉ có validation và hiển thị lý do không tách test.
+  Random split không phù hợp để đo tổng quát hóa cho dữ liệu thời gian hoặc nhiều dòng cùng một thực thể.
 - Model image là **runtime dùng chung** cho worker và Lambda theo sơ đồ. Artifact model nằm ở S3;
   deploy không build một Docker image riêng cho từng model. Chỉ model từ worker của hệ thống mới được load.
 - `time_limit` 10–600 giây là ngân sách fit của AutoGluon, không phải hard timeout cho toàn bộ job.

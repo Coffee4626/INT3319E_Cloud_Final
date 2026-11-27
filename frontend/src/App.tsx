@@ -74,7 +74,7 @@ const statusLabel: Record<string, string> = {
   FAILED: "Thất bại",
   CANCELLED: "Đã hủy",
   READY: "Sẵn sàng",
-  UPLOADING: "Chờ upload",
+  UPLOADING: "Chờ tải lên",
   ACTIVE: "Hoạt động",
   REVOKED: "Đã thu hồi",
 };
@@ -249,7 +249,7 @@ export default function App({ authError }: { authError: string }) {
         <Logo />
         <ShieldCheck size={44} />
         <h1>Workspace của bạn</h1>
-        <p>Đăng nhập để quản lý dữ liệu, model và endpoint.</p>
+        <p>Đăng nhập để quản lý dữ liệu, mô hình và API dự đoán.</p>
         <ErrorBox message={error} />
         <Button onClick={start}>Đăng nhập với Cognito</Button>
         <button className="text-button" onClick={() => go("/")}>
@@ -272,7 +272,7 @@ export default function App({ authError }: { authError: string }) {
     { id: "overview", path: "/app", label: "Tổng quan", icon: LayoutDashboard },
     { id: "datasets", path: "/app/datasets", label: "Dữ liệu", icon: Database },
     { id: "jobs", path: "/app/jobs", label: "Thí nghiệm", icon: FlaskConical },
-    { id: "endpoints", path: "/app/endpoints", label: "Endpoints", icon: Box },
+    { id: "endpoints", path: "/app/endpoints", label: "API dự đoán", icon: Box },
   ];
   const navigate = (next: string) => {
     go(next);
@@ -301,7 +301,7 @@ export default function App({ authError }: { authError: string }) {
           </div>
           <ChevronDown size={15} />
         </div>
-        <span className="nav-caption">WORKSPACE</span>
+        <span className="nav-caption">KHÔNG GIAN LÀM VIỆC</span>
         <nav>
           {nav.map((item) => (
             <button
@@ -318,8 +318,8 @@ export default function App({ authError }: { authError: string }) {
         <div className="sidebar-bottom">
           <div className="cloud-note">
             <Cloud size={22} />
-            <strong>Compute theo nhu cầu</strong>
-            <p>Worker tự khởi động khi có job và về 0 khi rảnh.</p>
+            <strong>Tài nguyên tính toán theo nhu cầu</strong>
+            <p>Máy xử lý tự khởi động khi có tác vụ và về 0 khi rảnh.</p>
             <span>EC2 AUTO SCALING</span>
           </div>
           <button
@@ -353,7 +353,7 @@ export default function App({ authError }: { authError: string }) {
             >
               <Menu size={20} />
             </button>
-            <span className="muted">Workspace</span>
+            <span className="muted">Không gian làm việc</span>
             <ChevronRight size={14} />
             <strong>
               {active === "new"
@@ -414,7 +414,7 @@ function Landing({ start, error }: { start: () => void; error: string }) {
           <a href="#platform">Nền tảng</a>
           <button onClick={start}>Đăng nhập</button>
         </div>
-        <Button onClick={start}>Mở workspace</Button>
+        <Button onClick={start}>Mở không gian làm việc</Button>
       </nav>
       <section className="hero">
         <div className="hero-copy">
@@ -432,7 +432,7 @@ function Landing({ start, error }: { start: () => void; error: string }) {
           <p>
             Biến bảng dữ liệu thành mô hình dự đoán.
             <br />
-            Một workspace để chuẩn bị dữ liệu, huấn luyện và đưa AI vào ứng dụng
+            Một không gian làm việc để chuẩn bị dữ liệu, huấn luyện và đưa AI vào ứng dụng
             của bạn.
           </p>
           <div className="hero-actions">
@@ -448,7 +448,7 @@ function Landing({ start, error }: { start: () => void; error: string }) {
           <div className="hero-proof">
             <span>
               <Check size={15} />
-              Không cần viết pipeline ML
+              Không cần viết quy trình ML
             </span>
             <span>
               <Check size={15} />
@@ -458,7 +458,7 @@ function Landing({ start, error }: { start: () => void; error: string }) {
         </div>
         <div
           className="hero-visual"
-          aria-label="Minh họa pipeline từ CSV đến model và API"
+          aria-label="Minh họa quy trình từ CSV đến mô hình và API"
         >
           <div className="visual-grid" />
           <div className="visual-top">
@@ -487,7 +487,7 @@ function Landing({ start, error }: { start: () => void; error: string }) {
             </div>
             <span className="float-tag tag-a">
               <WandSparkles size={13} />
-              Preprocess
+              Tiền xử lý
             </span>
             <span className="float-tag tag-b">
               <Server size={13} />
@@ -559,7 +559,7 @@ function Landing({ start, error }: { start: () => void; error: string }) {
             {
               icon: UploadCloud,
               title: "Đưa dữ liệu vào",
-              text: "Upload CSV, khám phá cấu trúc, giá trị thiếu và dữ liệu trùng lặp.",
+              text: "Tải lên CSV, khám phá cấu trúc, giá trị thiếu và dữ liệu trùng lặp.",
               tag: "S3 DATASETS",
             },
             {
@@ -570,8 +570,8 @@ function Landing({ start, error }: { start: () => void; error: string }) {
             },
             {
               icon: Rocket,
-              title: "Đưa model vào thực tế",
-              text: "Triển khai endpoint, tạo API key riêng và thử dự đoán ngay.",
+              title: "Đưa mô hình vào thực tế",
+              text: "Triển khai API dự đoán, tạo API khóa riêng và thử dự đoán ngay.",
               tag: "ECR + LAMBDA",
             },
           ].map((item) => (
@@ -593,27 +593,27 @@ function Landing({ start, error }: { start: () => void; error: string }) {
             Sẵn sàng cho nhiều hơn.
           </h2>
           <p>
-            Hàng đợi SQS điều phối công việc. EC2 mở rộng theo nhu cầu. Model
-            được lưu trên S3 và phục vụ qua Lambda, với cùng phiên bản runtime.
+            Hàng đợi SQS điều phối công việc. EC2 mở rộng theo nhu cầu. Mô hình
+            được lưu trên S3 và phục vụ qua Lambda, với cùng phiên bản môi trường chạy.
           </p>
-          <Button onClick={start}>Khám phá workspace</Button>
+          <Button onClick={start}>Khám phá không gian làm việc</Button>
         </div>
         <div className="platform-details">
           {[
             {
               icon: ShieldCheck,
               title: "Dữ liệu có chủ sở hữu",
-              text: "Cognito xác thực người dùng. Dataset và thí nghiệm được phân quyền theo workspace.",
+              text: "Cognito xác thực người dùng. Bộ dữ liệu và thí nghiệm được phân quyền theo không gian làm việc.",
             },
             {
               icon: Activity,
               title: "Biết điều gì đang diễn ra",
-              text: "Trạng thái job, kết quả validation và logs CloudWatch giúp bạn theo dõi mỗi lần train.",
+              text: "Trạng thái tác vụ, kết quả kiểm định và logs CloudWatch giúp bạn theo dõi mỗi lần huấn luyện.",
             },
             {
               icon: Code2,
               title: "Kết nối bằng một API",
-              text: "Thử JSON ngay trên giao diện, sao chép cURL và quản lý key cho từng endpoint.",
+              text: "Thử JSON ngay trên giao diện, sao chép cURL và quản lý khóa cho từng API dự đoán.",
             },
           ].map((item) => (
             <div key={item.title}>
@@ -629,7 +629,7 @@ function Landing({ start, error }: { start: () => void; error: string }) {
       <footer className="landing-footer">
         <Logo light />
         <span>Cloud AutoML Studio</span>
-        <span>Designed for your next experiment.</span>
+        <span>Designed for your next thí nghiệm.</span>
       </footer>
     </div>
   );
@@ -682,9 +682,9 @@ function Overview({ go }: { go: (p: string) => void }) {
             <br />
             bắt đầu từ dữ liệu của bạn.
           </h2>
-          <p>Upload CSV. Chọn mục tiêu. Khám phá khả năng.</p>
+          <p>Tải lên CSV. Chọn mục tiêu. Khám phá khả năng.</p>
           <Button kind="dark" onClick={() => go("/app/new")}>
-            Bắt đầu với một dataset
+            Bắt đầu với một bộ dữ liệu
           </Button>
         </div>
         <div className="banner-art" aria-hidden="true">
@@ -771,7 +771,7 @@ function Overview({ go }: { go: (p: string) => void }) {
           )}
         </section>
         <section className="quick-guide">
-          <span className="eyebrow">QUICK START</span>
+          <span className="eyebrow">BẮT ĐẦU NHANH</span>
           <h2>Từ CSV đến API</h2>
           <div className="guide-item">
             <span>
@@ -787,7 +787,7 @@ function Overview({ go }: { go: (p: string) => void }) {
               <WandSparkles size={17} />
             </span>
             <div>
-              <strong>Chuẩn bị & train</strong>
+              <strong>Chuẩn bị & huấn luyện</strong>
               <p>Classification hoặc regression</p>
             </div>
           </div>
@@ -797,13 +797,13 @@ function Overview({ go }: { go: (p: string) => void }) {
             </span>
             <div>
               <strong>Triển khai & dự đoán</strong>
-              <p>Endpoint với API key riêng</p>
+              <p>Endpoint với API khóa riêng</p>
             </div>
           </div>
           <div className="guide-note">
             <Sparkles size={17} />
             <p>
-              Chưa có dữ liệu? Dùng dataset mẫu customer churn khi tạo thí
+              Chưa có dữ liệu? Dùng bộ dữ liệu mẫu customer churn khi tạo thí
               nghiệm.
             </p>
           </div>
@@ -870,9 +870,9 @@ function Jobs({ go }: { go: (p: string) => void }) {
   return (
     <>
       <PageHeading
-        eyebrow="EXPERIMENTS"
+        eyebrow="THÍ NGHIỆM"
         title="Mỗi lần thử, một khám phá."
-        description="Theo dõi hàng đợi, quá trình huấn luyện và kết quả model."
+        description="Theo dõi hàng đợi, quá trình huấn luyện và kết quả mô hình."
         action={
           <Button onClick={() => go("/app/new")}>
             <Plus size={18} />
@@ -928,7 +928,7 @@ function Jobs({ go }: { go: (p: string) => void }) {
           <Empty
             icon={<FlaskConical size={28} />}
             headline="Chưa có thí nghiệm"
-            detail="Bắt đầu với dữ liệu của bạn hoặc dataset mẫu."
+            detail="Bắt đầu với dữ liệu của bạn hoặc bộ dữ liệu mẫu."
             action={
               <Button onClick={() => go("/app/new")}>Tạo thí nghiệm</Button>
             }
@@ -1002,13 +1002,13 @@ function Datasets({ go }: { go: (p: string) => void }) {
   return (
     <>
       <PageHeading
-        eyebrow="DATA LIBRARY"
+        eyebrow="THƯ VIỆN DỮ LIỆU"
         title="Mọi mô hình bắt đầu ở đây."
         description="Quản lý dữ liệu nguồn và các phiên bản đã tiền xử lý."
         action={
           <Button onClick={() => go("/app/new")}>
             <UploadCloud size={18} />
-            Upload dataset
+            Tải lên bộ dữ liệu
           </Button>
         }
       />
@@ -1020,10 +1020,10 @@ function Datasets({ go }: { go: (p: string) => void }) {
           <Empty
             icon={<Database size={28} />}
             headline="Thư viện đang trống"
-            detail="Upload file CSV để khám phá dữ liệu và bắt đầu thí nghiệm."
+            detail="Tải lên tệp CSV để khám phá dữ liệu và bắt đầu thí nghiệm."
             action={
               <Button onClick={() => go("/app/new")}>
-                Thêm dataset đầu tiên
+                Thêm bộ dữ liệu đầu tiên
               </Button>
             }
           />
@@ -1048,7 +1048,7 @@ function Datasets({ go }: { go: (p: string) => void }) {
               <p>
                 {d.profile
                   ? `${fmt(d.profile.rows)} dòng · ${d.profile.columns.length} cột`
-                  : "Chưa hoàn tất upload"}
+                  : "Chưa hoàn tất tải lên"}
               </p>
               <div className="dataset-card-footer">
                 <span>{date(d.created_at)}</span>
@@ -1077,7 +1077,7 @@ function Datasets({ go }: { go: (p: string) => void }) {
                 </div>
               </>
             ) : (
-              <p>Upload chưa hoàn tất. Hãy tạo một upload mới.</p>
+              <p>Tải lên chưa hoàn tất. Hãy tải tệp lên lại.</p>
             )}
           </div>
         </Modal>
@@ -1199,12 +1199,12 @@ function NewExperiment({ go }: { go: (p: string) => void }) {
   return (
     <>
       <PageHeading
-        eyebrow="NEW EXPERIMENT"
+        eyebrow="THÍ NGHIỆM MỚI"
         title="Biến dữ liệu thành khả năng."
         description="Ba bước để bắt đầu huấn luyện mô hình đầu tiên."
       />
       <div className="wizard-steps">
-        {["Upload dữ liệu", "Tiền xử lý", "Cấu hình & train"].map(
+        {["Tải lên dữ liệu", "Tiền xử lý", "Cấu hình & huấn luyện"].map(
           (label, i) => (
             <div
               key={label}
@@ -1251,7 +1251,7 @@ function NewExperiment({ go }: { go: (p: string) => void }) {
                 </span>
                 <h3>
                   {busy
-                    ? "Đang upload & phân tích dữ liệu…"
+                    ? "Đang tải lên & phân tích dữ liệu…"
                     : "Thả file CSV vào đây"}
                 </h3>
                 <p>hoặc chọn file từ máy tính của bạn</p>
@@ -1277,7 +1277,7 @@ function NewExperiment({ go }: { go: (p: string) => void }) {
                   <FileSpreadsheet size={22} />
                 </span>
                 <div>
-                  <strong>Chưa có dataset? Bắt đầu với dữ liệu mẫu.</strong>
+                  <strong>Chưa có bộ dữ liệu? Bắt đầu với dữ liệu mẫu.</strong>
                   <p>Customer churn · 240 dòng · 6 cột · dữ liệu tổng hợp</p>
                 </div>
                 <Button
@@ -1294,7 +1294,7 @@ function NewExperiment({ go }: { go: (p: string) => void }) {
             <>
               <div className="panel-heading">
                 <div>
-                  <h2>Hiểu dữ liệu trước khi train.</h2>
+                  <h2>Hiểu dữ liệu trước khi huấn luyện.</h2>
                   <p>{dataset!.name}</p>
                 </div>
                 <Badge status="READY" />
@@ -1388,8 +1388,8 @@ function NewExperiment({ go }: { go: (p: string) => void }) {
                     <span>Loại dòng thiếu giá trị mục tiêu</span>
                   </label>
                   <p className="fine-print">
-                    Giá trị thiếu ở feature được AutoGluon xử lý trong quá trình
-                    train. Bản dữ liệu gốc được giữ nguyên.
+                    Giá trị thiếu ở đặc trưng được AutoGluon xử lý trong quá trình
+                    huấn luyện. Bản dữ liệu gốc được giữ nguyên.
                   </p>
                 </div>
                 <h3 className="preview-heading">Xem trước dữ liệu</h3>
@@ -1436,7 +1436,7 @@ function NewExperiment({ go }: { go: (p: string) => void }) {
                     Dữ liệu đã sẵn sàng:{" "}
                     <strong>
                       {fmt(profile.rows)} dòng, {profile.columns.length - 1}{" "}
-                      features
+                      đặc trưng
                     </strong>
                     . Đã loại{" "}
                     {Number(preparedDataset!.report?.input_rows || profile.rows) -
@@ -1507,13 +1507,13 @@ function NewExperiment({ go }: { go: (p: string) => void }) {
                 </label>
                 <div className="train-summary">
                   <span>
-                    Target <strong>{target}</strong>
+                    Cột mục tiêu <strong>{target}</strong>
                   </span>
                   <span>
-                    Model <strong>LightGBM</strong>
+                    Mô hình <strong>LightGBM</strong>
                   </span>
                   <span>
-                    Runtime <strong>AutoGluon 1.4</strong>
+                    Môi trường chạy <strong>AutoGluon 1.4</strong>
                   </span>
                 </div>
               </div>
@@ -1546,17 +1546,17 @@ function NewExperiment({ go }: { go: (p: string) => void }) {
           </div>
           <h3>
             {step === 0
-              ? "Dữ liệu tốt. Model tốt hơn."
+              ? "Dữ liệu tốt. Mô hình tốt hơn."
               : step === 1
                 ? "Chọn đúng điều cần dự đoán."
-                : "Compute khi bạn cần."}
+                : "Tài nguyên tính toán khi bạn cần."}
           </h3>
           <p>
             {step === 0
               ? "Mỗi dòng là một quan sát. Mỗi cột là một thuộc tính. Thêm cột kết quả để mô hình có thể học."
               : step === 1
-                ? "Target là câu trả lời bạn muốn model tìm ra. Bỏ các cột ID hoặc dữ liệu tiết lộ trực tiếp kết quả để tránh rò rỉ dữ liệu."
-                : "Job được đưa vào hàng đợi. Auto Scaling khởi động EC2 worker để huấn luyện, rồi lưu model an toàn trên S3."}
+                ? "Target là câu trả lời bạn muốn mô hình tìm ra. Bỏ các cột ID hoặc dữ liệu tiết lộ trực tiếp kết quả để tránh rò rỉ dữ liệu."
+                : "Tác vụ được đưa vào hàng đợi. Auto Scaling khởi động EC2 máy xử lý để huấn luyện, rồi lưu mô hình an toàn trên S3."}
           </p>
           <div className="aside-divider" />
           <div className="aside-detail">
@@ -1569,11 +1569,11 @@ function NewExperiment({ go }: { go: (p: string) => void }) {
           </div>
           <div className="aside-detail">
             <Server size={17} />
-            <span>Worker không mở cổng inbound</span>
+            <span>Máy xử lý không mở cổng inbound</span>
           </div>
           {step === 2 && (
             <div className="notice">
-              Job đầu tiên có thể chờ vài phút để EC2 khởi động và tải image.
+              Tác vụ đầu tiên có thể chờ vài phút để EC2 khởi động và tải image.
             </div>
           )}
         </aside>
@@ -1662,7 +1662,7 @@ function JobDetail({
         Thí nghiệm / Chi tiết
       </button>
       <PageHeading
-        eyebrow="EXPERIMENT DETAILS"
+        eyebrow="CHI TIẾT THÍ NGHIỆM"
         title={job.name}
         description={`ID ${job.id}`}
         action={<Badge status={job.status} />}
@@ -1683,16 +1683,16 @@ function JobDetail({
             {[
               {
                 title: "Đưa vào hàng đợi",
-                text: "Dataset đã được lưu. Job đang chờ EC2 worker.",
+                text: "Bộ dữ liệu đã được lưu. Tác vụ đang chờ EC2 máy xử lý.",
                 icon: Layers3,
               },
               {
-                title: "Huấn luyện model",
-                text: "AutoGluon học từ dữ liệu và đánh giá trên tập validation.",
+                title: "Huấn luyện mô hình",
+                text: "AutoGluon học từ dữ liệu và đánh giá trên tập kiểm định.",
                 icon: FlaskConical,
               },
               {
-                title: "Model sẵn sàng",
+                title: "Mô hình sẵn sàng",
                 text: "Artifact đã được lưu lên S3 và sẵn sàng triển khai.",
                 icon: CheckCircle2,
               },
@@ -1714,14 +1714,14 @@ function JobDetail({
           </div>
           {job.status === "QUEUED" && (
             <div className="panel-note">
-              Worker tự khởi động từ 0. Lần train đầu có thể cần vài phút để tải
+              Máy xử lý tự khởi động từ 0. Lần huấn luyện đầu có thể cần vài phút để tải
               image.
             </div>
           )}
           {job.metrics?.leaderboard && (
             <div className="results-section">
               <div className="panel-heading">
-                <h2>Kết quả validation</h2>
+                <h2>Kết quả kiểm định</h2>
                 <span className="small-tag">{job.metrics.eval_metric}</span>
               </div>
               <div className="table-scroll">
@@ -1748,9 +1748,69 @@ function JobDetail({
               </div>
               <p className="fine-print">
                 Score của AutoGluon được quy về “cao hơn là tốt hơn”. Loss như
-                RMSE có thể hiển thị số âm. Đây là validation score, chưa phải
-                đánh giá trên test set độc lập.
+                RMSE có thể hiển thị số âm. Kiểm định được dùng để chọn mô hình.
               </p>
+            </div>
+          )}
+          {job.metrics?.evaluation && (
+            <div className="results-section">
+              <div className="panel-heading">
+                <h2>Đánh giá trên tập test</h2>
+                <span className="small-tag">
+                  {job.metrics.evaluation.test_rows} dòng
+                </span>
+              </div>
+              {job.metrics.evaluation.scores ? (
+                <>
+                  <div className="table-scroll">
+                    <table>
+                      <thead><tr><th>METRIC</th><th>TEST SCORE</th></tr></thead>
+                      <tbody>
+                        {Object.entries(job.metrics.evaluation.scores).map(([key, value]) => (
+                          <tr key={key}>
+                            <td>{key.toUpperCase().replaceAll("_", " ")}</td>
+                            <td>{value.toFixed(4)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <p className="fine-print">
+                    Khoảng 20% dữ liệu được giữ riêng trước khi huấn luyện, seed {job.metrics.evaluation.seed}.
+                    Tập test không tham gia chọn mô hình. MAE/RMSE thấp hơn là tốt hơn;
+                    accuracy, F1 và R² cao hơn là tốt hơn.
+                  </p>
+                  {job.metrics.evaluation.confusion_matrix && (
+                    <details>
+                      <summary>Confusion matrix — hàng: thực tế, cột: dự đoán</summary>
+                      <div className="table-scroll">
+                        <table>
+                          <thead>
+                            <tr>
+                              <th>THỰC TẾ / DỰ ĐOÁN</th>
+                              {job.metrics.evaluation.confusion_matrix.labels.map(label => (
+                                <th key={label}>{label}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {job.metrics.evaluation.confusion_matrix.values.map((row, index) => (
+                              <tr key={index}>
+                                <th>{job.metrics!.evaluation!.confusion_matrix!.labels[index]}</th>
+                                {row.map((value, column) => <td key={column}>{value}</td>)}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </details>
+                  )}
+                </>
+              ) : (
+                <p className="fine-print">
+                  {job.metrics.evaluation.reason} Kết quả hiện có chỉ là kiểm định.
+                </p>
+              )}
             </div>
           )}
         </section>
@@ -1759,8 +1819,8 @@ function JobDetail({
           <dl>
             {[
               ["Bài toán", job.task],
-              ["Target", job.target],
-              ["Ngân sách train", `${job.time_limit}s`],
+              ["Cột mục tiêu", job.target],
+              ["Ngân sách huấn luyện", `${job.time_limit}s`],
               ["Tạo lúc", date(job.created_at)],
               ["Bắt đầu", date(job.started_at)],
               ["Hoàn thành", date(job.finished_at)],
@@ -1780,7 +1840,7 @@ function JobDetail({
           {job.status === "COMPLETED" && (
             <Button disabled={busy} onClick={() => void action("deploy")}>
               <Rocket size={17} />
-              Triển khai endpoint
+              Triển khai API dự đoán
             </Button>
           )}
           {job.status === "QUEUED" && (
@@ -1789,7 +1849,7 @@ function JobDetail({
               disabled={busy}
               onClick={() => void action("cancel")}
             >
-              Hủy job đang chờ
+              Hủy tác vụ đang chờ
             </Button>
           )}
           {["FAILED", "CANCELLED"].includes(job.status) && (
@@ -1799,8 +1859,8 @@ function JobDetail({
             </Button>
           )}
           <p className="fine-print">
-            Model được phục vụ bằng Lambda container với cùng runtime ECR đã
-            dùng để train.
+            Mô hình được phục vụ bằng Lambda container với cùng môi trường chạy ECR đã
+            dùng để huấn luyện.
           </p>
         </aside>
       </div>
@@ -1815,10 +1875,10 @@ function JobDetail({
           <div className="modal-body">
             <div className="success-note">
               <CheckCircle2 size={20} />
-              Lưu API key này trước khi đóng. Key chỉ hiển thị một lần.
+              Lưu khóa API này trước khi đóng. Key chỉ hiển thị một lần.
             </div>
             <label className="field">
-              API key<code className="key-display">{deployed.api_key}</code>
+              khóa API<code className="key-display">{deployed.api_key}</code>
             </label>
             <CopyButton text={deployed.api_key} />
             <label className="field">
@@ -1893,9 +1953,9 @@ function Endpoints({
   return (
     <>
       <PageHeading
-        eyebrow="MODEL ENDPOINTS"
+        eyebrow="API DỰ ĐOÁN"
         title="Đưa dự đoán vào thực tế."
-        description="Endpoint của bạn. API key của bạn. Sẵn sàng kết nối ứng dụng."
+        description="Endpoint của bạn. khóa API của bạn. Sẵn sàng kết nối ứng dụng."
         action={
           <Button kind="secondary" onClick={() => void list.refresh()}>
             <RefreshCw size={17} />
@@ -1910,8 +1970,8 @@ function Endpoints({
         <div className="panel">
           <Empty
             icon={<Box size={28} />}
-            headline="Model tiếp theo đang chờ bạn"
-            detail="Hoàn tất một thí nghiệm và chọn Triển khai endpoint để bắt đầu dự đoán."
+            headline="Mô hình tiếp theo đang chờ bạn"
+            detail="Hoàn tất một thí nghiệm và chọn Triển khai API dự đoán để bắt đầu dự đoán."
           />
         </div>
       ) : (
@@ -2073,7 +2133,7 @@ function Playground({
       <ErrorBox message={error} />
       {revoked && (
         <div className="notice">
-          Endpoint đã bị thu hồi. Tạo deployment mới từ thí nghiệm để tiếp tục.
+          Endpoint đã bị thu hồi. Tạo bản triển khai mới từ thí nghiệm để tiếp tục.
         </div>
       )}
       <div className="playground-tabs">
@@ -2093,14 +2153,14 @@ function Playground({
       {tab === "request" ? (
         <>
           <label className="field">
-            API key
+            khóa API
             <div className="input-action">
               <input
                 type="password"
                 autoComplete="off"
                 value={key}
                 onChange={(e) => setKey(e.target.value)}
-                placeholder="Dán key của endpoint này"
+                placeholder="Dán khóa của API dự đoán này"
               />
               <CopyButton text={key} />
             </div>
@@ -2113,12 +2173,12 @@ function Playground({
               onClick={() => void rotate()}
             >
               <RefreshCw size={13} />
-              Tạo key thay thế
+              Tạo khóa thay thế
             </Button>
           </div>
           <label className="field">
-            Input rows{" "}
-            <span>Mảng JSON, tối đa 100 dòng. Không cần cột target.</span>
+            Dữ liệu đầu vào{" "}
+            <span>Mảng JSON, tối đa 100 dòng. Không cần cột mục tiêu.</span>
             <textarea
               spellCheck={false}
               value={rows}
@@ -2155,7 +2215,7 @@ function Playground({
       <div className="endpoint-danger">
         {confirm ? (
           <>
-            <span>Key sẽ ngừng hoạt động ngay. Thu hồi endpoint này?</span>
+            <span>Key sẽ ngừng hoạt động ngay. Thu hồi API dự đoán này?</span>
             <Button
               kind="danger small"
               disabled={busy}
@@ -2173,7 +2233,7 @@ function Playground({
             disabled={revoked}
             onClick={() => setConfirm(true)}
           >
-            Thu hồi endpoint
+            Thu hồi API dự đoán
           </button>
         )}
       </div>
@@ -2204,9 +2264,9 @@ function Settings() {
   return (
     <>
       <PageHeading
-        eyebrow="PLATFORM"
+        eyebrow="NỀN TẢNG"
         title="Hạ tầng phía sau mỗi dự đoán."
-        description="Cấu hình kết nối và kiến trúc vận hành của workspace."
+        description="Cấu hình kết nối và kiến trúc vận hành của không gian làm việc."
       />
       <div className="settings-grid">
         <section className="panel settings-panel">
@@ -2247,37 +2307,37 @@ function Settings() {
             </p>
           )}
           <p className="fine-print">
-            Cấu hình được tạo khi deploy và nạp từ /config.js. Không chứa AWS
-            secret hoặc API key.
+            Cấu hình được tạo khi triển khai và nạp từ /config.js. Không chứa AWS
+            secret hoặc khóa API.
           </p>
         </section>
         <section className="panel settings-panel">
-          <h2>Giới hạn workspace</h2>
+          <h2>Giới hạn không gian làm việc</h2>
           <dl>
             <div>
-              <dt>Dataset</dt>
+              <dt>Bộ dữ liệu</dt>
               <dd>10 MB · 100.000 dòng · 200 cột</dd>
             </div>
             <div>
-              <dt>Train</dt>
+              <dt>Huấn luyện</dt>
               <dd>10–600 giây / lần fit</dd>
             </div>
             <div>
-              <dt>Inference</dt>
+              <dt>Dự đoán</dt>
               <dd>100 dòng / request</dd>
             </div>
             <div>
-              <dt>Runtime</dt>
+              <dt>Môi trường chạy</dt>
               <dd>AutoGluon 1.4 + LightGBM</dd>
             </div>
             <div>
               <dt>Artifacts</dt>
-              <dd>S3 · giới hạn 1 GB / model</dd>
+              <dd>S3 · giới hạn 1 GB / mô hình</dd>
             </div>
           </dl>
           <p className="notice">
-            Inference chạy trong Lambda. Cold start hoặc model lớn có thể vượt
-            timeout API 28 giây; thử lại để dùng model đã được cache.
+            Inference chạy trong Lambda. Cold start hoặc mô hình lớn có thể vượt
+            timeout API 28 giây; thử lại để dùng mô hình đã được cache.
           </p>
         </section>
       </div>
@@ -2297,7 +2357,7 @@ function Settings() {
             { icon: Layers3, title: "SQS", desc: "Hàng đợi jobs" },
             { icon: Server, title: "EC2 workers", desc: "Auto Scaling 0 → N" },
             { icon: Database, title: "Model storage", desc: "S3 + DynamoDB" },
-            { icon: Zap, title: "Inference", desc: "Lambda + ECR" },
+            { icon: Zap, title: "Dự đoán", desc: "Lambda + ECR" },
           ].map((n) => (
             <div key={n.title}>
               <n.icon size={25} />
@@ -2307,11 +2367,14 @@ function Settings() {
           ))}
         </div>
         <div className="panel-note">
-          CloudWatch theo dõi logs và queue. Worker đang train được bảo vệ khỏi
-          scale-in; nhóm về 0 khi hàng đợi và job đang xử lý đều trống trong 15
+          CloudWatch theo dõi logs và hàng đợi. Máy xử lý đang huấn luyện được bảo vệ khỏi
+          scale-in; nhóm về 0 khi hàng đợi và tác vụ đang xử lý đều trống trong 15
           phút.
         </div>
       </section>
     </>
   );
 }
+
+// Retain the existing dataset management workflow.
+export { Datasets as LiveDatasets };

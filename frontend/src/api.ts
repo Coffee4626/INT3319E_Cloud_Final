@@ -157,7 +157,7 @@ export async function api<T>(
     data = await result.json();
   } catch {
     throw new Error(
-      `API không trả về JSON hợp lệ (HTTP ${result.status}). Kiểm tra kết nối backend.`,
+      `API không trả về JSON hợp lệ (HTTP ${result.status}). Kiểm tra kết nối dịch vụ API.`,
     );
   }
   if (!result.ok)
@@ -193,6 +193,8 @@ export type Dataset = {
   report?: Record<string, number | string[]>;
 };
 export type Metrics = {
+  learning_curve_metric?: string;
+  learning_curves?: Record<string, {epoch: number; train: number; validation: number}[]>;
   leaderboard?: {
     model: string;
     score_val: number;
@@ -204,6 +206,15 @@ export type Metrics = {
   features?: string[];
   artifact_bytes?: number;
   training_rows?: number;
+  total_rows?: number;
+  evaluation?: {
+    method: string;
+    seed: number;
+    test_rows: number;
+    reason?: string;
+    scores?: Record<string, number>;
+    confusion_matrix?: { labels: string[]; values: number[][] } | null;
+  };
   problem_type?: string;
 };
 export type Job = {
@@ -260,7 +271,7 @@ export async function upload(file: File): Promise<Dataset> {
     signal: AbortSignal.timeout(120_000),
   });
   if (!result.ok)
-    throw new Error("Upload S3 thất bại. Kiểm tra CORS và kích thước file.");
+    throw new Error("Tải lên S3 thất bại. Kiểm tra CORS và kích thước tệp.");
   return api<Dataset>(`/datasets/${ticket.dataset_id}/complete`, {});
 }
 export function sampleFile() {

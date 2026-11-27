@@ -2,6 +2,7 @@ import csv
 import io
 import json
 import math
+import logging
 from abc import abstractmethod
 
 from app.tasks.base import MLTask
@@ -40,16 +41,37 @@ class TabularTask(MLTask):
 
     def train(self, dataset, model_dir, job):
         from autogluon.tabular import TabularDataset, TabularPredictor
+        from app.tasks.evaluation import evaluate, split_indices
 
         data = TabularDataset(str(dataset))
+        problem_type = self.problem_type(data[job["target"]])
+        if problem_type is None:
+            from autogluon.core.utils import infer_problem_type
+            problem_type = infer_problem_type(data[job["target"]], silent=True)
+        train_indices, test_indices, reason = split_indices(list(data[job["target"]]), problem_type)
         predictor = TabularPredictor(label=job["target"], path=str(model_dir),
-                                     problem_type=self.problem_type(data[job["target"]]))
-        predictor.fit(data, time_limit=int(job["time_limit"]),
-                      hyperparameters={"GBM": {}}, fit_weighted_ensemble=False)
+                                     problem_type=problem_type)
+        curve_metric = "root_mean_squared_error" if problem_type == "regression" else "log_loss"
+        predictor.fit(data.iloc[train_indices], time_limit=int(job["time_limit"]),
+                      hyperparameters={"GBM": {}}, fit_weighted_ensemble=False,
+                      learning_curves={"metrics": [curve_metric], "use_error": True})
         leaderboard = json.loads(predictor.leaderboard(silent=True).to_json(orient="records"))
         metrics = {"leaderboard": leaderboard, "best_model": predictor.model_best,
                    "eval_metric": predictor.eval_metric.name, "problem_type": predictor.problem_type,
-                   "features": predictor.feature_metadata_in.get_features(), "training_rows": len(data)}
+                   "features": predictor.feature_metadata_in.get_features(), "training_rows": len(train_indices),
+                   "total_rows": len(data),
+                   "evaluation": {"method": "holdout_20_percent", "seed": 42,
+                                  "test_rows": len(test_indices), "reason": reason}}
+        if test_indices:
+            metrics["evaluation"].update(evaluate(predictor, data.iloc[test_indices], job["target"]))
+        # Curves come from actual LightGBM boosting rounds; never synthesize them.
+        try:
+            from app.tasks.curves import serialize_curves
+            _, model_curves = predictor.learning_curves()
+            metrics["learning_curves"] = serialize_curves(model_curves, curve_metric)
+            metrics["learning_curve_metric"] = curve_metric
+        except (ValueError, TypeError, KeyError, IndexError, AttributeError):
+            logging.getLogger(__name__).warning("Learning curves unavailable for this run", exc_info=True)
         predictor.save_space()
         return metrics
 

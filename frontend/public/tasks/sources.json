@@ -1,0 +1,17 @@
+[
+  {
+    "file": "classification.jpg",
+    "source": "https://unsplash.com/photos/adult-golden-retriever-sitting-on-green-grass-YI_iWr_12kE",
+    "download": "https://images.unsplash.com/photo-1539692177343-b2b990faef15?auto=format&fit=crop&w=1200&q=85",
+    "license": "https://unsplash.com/license",
+    "usage": "Illustration of image classification; label is a diagram annotation."
+  },
+  {
+    "file": "street.jpg",
+    "photographer": "Jenin Abumazen",
+    "source": "https://unsplash.com/photos/assorted-cars-on-road-Tv09pxsusIM",
+    "download": "https://images.unsplash.com/photo-1577922346869-12479f1176bb?auto=format&fit=crop&w=1200&q=85",
+    "license": "https://unsplash.com/license",
+    "usage": "Detection/segmentation illustrations with code-native SVG overlays."
+  }
+]

@@ -1,0 +1,11 @@
+Subject: Account verification blocks CloudFront and EC2 Standard On-Demand quota
+
+Please help verify and enable account 080665850368 (project Cloud Computing Finals) for our university cloud computing project in ap-southeast-2.
+
+We are deploying a tabular AutoML application using S3, DynamoDB, SQS, EC2 Auto Scaling, Lambda, API Gateway, Cognito, ECR, and a static frontend. Two account restrictions block deployment:
+
+1. EC2 quota L-1216C47A (Running On-Demand Standard instances) is applied at 0 vCPU, while the default is 5. We need up to two t3.large instances (4 vCPU total), with ASG minimum/desired capacity 0 and maximum 2. Requesting 6 vCPU via both AWS CLI and Service Quotas Console returns: "Unable to perform this operation. Please contact AWS Support". No quota request is recorded. Please enable EC2 usage and set an appropriate quota of at least 4 vCPU.
+
+2. CloudFormation cannot create our CloudFront distribution: "Your account must be verified before you can add new CloudFront resources. To verify your account, please contact AWS Support" (CloudFront 403, Request ID 45c5db5d-8eaa-4a8d-8d2e-c2242abd3300). Please advise how the account owner can complete verification and enable CloudFront.
+
+VPC and ECR creation succeeded. We are not requesting a paid support plan or an account-plan upgrade. Please explain any verification steps required from the account owner.

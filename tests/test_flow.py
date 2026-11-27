@@ -108,9 +108,7 @@ class FlowTests(unittest.TestCase):
 
     def test_training_failure_is_saved_and_message_can_be_acknowledged(self):
         job_id = self.submit()
-        fake = MagicMock()
-        fake.TabularPredictor.return_value.fit.side_effect = ValueError("Invalid target data")
-        with patch.dict("sys.modules", {"autogluon": MagicMock(), "autogluon.tabular": fake}):
+        with patch("app.tasks.tabular.TabularTask.train", side_effect=ValueError("Invalid target data")):
             with self.assertLogs(level="ERROR"):
                 self.assertTrue(worker.process(job_id))
         job = table().get_item(Key={"id": job_id})["Item"]

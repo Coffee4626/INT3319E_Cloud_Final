@@ -64,7 +64,11 @@ bounded, không nhét CSV vào DynamoDB.
 1. Submit xác minh dataset/task/target, lưu QUEUED rồi gửi job ID vào SQS.
 2. Worker bật instance scale-in protection; conditional update claim QUEUED hoặc lease TRAINING hết hạn.
 3. Mỗi 30s gia hạn lease và message visibility. Mỗi worker train một job; nhiều worker có thể train song song.
-4. Strategy train AutoGluon/LightGBM, lấy validation leaderboard, save-space, đóng ZIP và upload S3.
+4. Strategy giữ riêng khoảng 20% test rows (seed 42; stratified classification), fit AutoGluon/LightGBM
+   trên phần còn lại với validation riêng; ghi leaderboard và test metrics, save-space, đóng ZIP, upload S3.
+   Test rows không được dùng để chọn model hay fit feature transforms. Classification có accuracy,
+   balanced accuracy, weighted F1 và confusion matrix (tối đa 20 lớp); regression có MAE, RMSE, R².
+   Dataset dưới 20 dòng/lớp dưới 5 mẫu trả lý do không có holdout, không giả test score.
 5. Artifact key `models/<job_id>/<attempt_owner>.zip` tách attempts; finish chỉ khi lease owner còn khớp.
 6. COMPLETED/FAILED/CANCELLED được ack; delivery trùng gặp active lease không được ack.
 7. Sau nhiều worker crash/redelivery, SQS chuyển sang DLQ. Lambda DLQ cập nhật FAILED khi không có active lease.

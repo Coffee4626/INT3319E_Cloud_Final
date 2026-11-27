@@ -68,6 +68,15 @@ if __name__ == "__main__":
         else:
             raise SystemExit("Timed out; inspect worker logs and SQS/DLQ")
         assert status["metrics"]["leaderboard"], status
+        curves = status["metrics"].get("learning_curves")
+        assert curves and curves.get(status["metrics"]["best_model"]), status["metrics"]
+        points = curves[status["metrics"]["best_model"]]
+        assert len(points) <= 120 and all(p["train"] >= 0 and p["validation"] >= 0 for p in points)
+        print(task, "learning curves:", len(points), "points;", status["metrics"]["learning_curve_metric"], flush=True)
+        evaluation = status["metrics"]["evaluation"]
+        assert evaluation["test_rows"] == 48, evaluation
+        assert evaluation["scores"], evaluation
+        print(task, "test evaluation:", evaluation["scores"], flush=True)
         deployment = request("/deploy", {"job_id": job_id})
         payload = {"rows": [{"x": 12}, {"x": 195}]}
         result = request(deployment["predict_path"], payload, key=deployment["api_key"])

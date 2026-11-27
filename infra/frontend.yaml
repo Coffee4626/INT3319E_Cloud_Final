@@ -1,5 +1,13 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: Private S3 frontend with CloudFront HTTPS and origin access control
+Parameters:
+  EnableHosting:
+    Type: String
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+    Description: Keep only the private bucket until CloudFront account verification is complete
+Conditions:
+  HostingEnabled: !Equals [!Ref EnableHosting, 'true']
 Resources:
   WebBucket:
     Type: AWS::S3::Bucket
@@ -15,6 +23,7 @@ Resources:
         ServerSideEncryptionConfiguration:
           - ServerSideEncryptionByDefault: {SSEAlgorithm: AES256}
   OriginAccess:
+    Condition: HostingEnabled
     Type: AWS::CloudFront::OriginAccessControl
     Properties:
       OriginAccessControlConfig:
@@ -23,6 +32,7 @@ Resources:
         SigningBehavior: always
         SigningProtocol: sigv4
   Distribution:
+    Condition: HostingEnabled
     Type: AWS::CloudFront::Distribution
     Properties:
       DistributionConfig:
@@ -47,6 +57,7 @@ Resources:
           - {ErrorCode: 403, ResponseCode: 200, ResponsePagePath: /index.html, ErrorCachingMinTTL: 0}
           - {ErrorCode: 404, ResponseCode: 200, ResponsePagePath: /index.html, ErrorCachingMinTTL: 0}
   SecurityHeaders:
+    Condition: HostingEnabled
     Type: AWS::CloudFront::ResponseHeadersPolicy
     Properties:
       ResponseHeadersPolicyConfig:
@@ -63,13 +74,16 @@ Resources:
       PolicyDocument:
         Version: '2012-10-17'
         Statement:
-          - Effect: Allow
-            Principal: {Service: cloudfront.amazonaws.com}
-            Action: s3:GetObject
-            Resource: !Sub '${WebBucket.Arn}/*'
-            Condition:
-              StringEquals:
-                AWS:SourceArn: !Sub 'arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/${Distribution}'
+          - !If
+            - HostingEnabled
+            - Effect: Allow
+              Principal: {Service: cloudfront.amazonaws.com}
+              Action: s3:GetObject
+              Resource: !Sub '${WebBucket.Arn}/*'
+              Condition:
+                StringEquals:
+                  AWS:SourceArn: !Sub 'arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/${Distribution}'
+            - !Ref AWS::NoValue
           - Effect: Deny
             Principal: '*'
             Action: s3:*
@@ -77,8 +91,10 @@ Resources:
             Condition: {Bool: {'aws:SecureTransport': 'false'}}
 Outputs:
   WebUrl:
+    Condition: HostingEnabled
     Value: !Sub 'https://${Distribution.DomainName}'
   WebBucket:
     Value: !Ref WebBucket
   DistributionId:
+    Condition: HostingEnabled
     Value: !Ref Distribution

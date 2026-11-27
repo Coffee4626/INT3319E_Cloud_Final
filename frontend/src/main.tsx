@@ -1,8 +1,8 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
-import App from "./App";
-import { completeSignIn } from "./api";
 import "./styles.css";
+import App from "./Studio";
+import { completeSignIn } from "./api";
 
 async function main() {
   let error = "";

@@ -42,19 +42,25 @@ class TaskTests(unittest.TestCase):
 
     def test_training_selects_correct_autogluon_problem_type(self):
         for task, labels, expected in (
-            (AutoTabularTask(), [1, 2], None),
+            (AutoTabularTask(), [1, 2], "binary"),
             (ClassificationTask(), [0, 1], "binary"),
             (ClassificationTask(), [1, 2, 3], "multiclass"),
             (RegressionTask(), [0, 1], "regression"),
         ):
             with self.subTest(task=type(task).__name__, expected=expected):
                 fake = MagicMock()
-                fake.TabularDataset.return_value = {"y": labels}
+                fake.TabularDataset.return_value.__getitem__.return_value = labels
+                fake.TabularDataset.return_value.__len__.return_value = len(labels)
                 fake.TabularPredictor.return_value.leaderboard.return_value.to_json.return_value = '[]'
-                with patch.dict(sys.modules, {"autogluon": MagicMock(), "autogluon.tabular": fake}):
+                fake.TabularPredictor.return_value.learning_curves.return_value = ({}, {})
+                utils = MagicMock()
+                utils.infer_problem_type.return_value = "binary"
+                with patch.dict(sys.modules, {"autogluon": MagicMock(), "autogluon.tabular": fake,
+                                               "autogluon.core": MagicMock(), "autogluon.core.utils": utils}):
                     task.train(Path("data.csv"), Path("model"), {"target": "y", "time_limit": 30})
                 self.assertEqual(fake.TabularPredictor.call_args.kwargs["problem_type"], expected)
                 self.assertEqual(fake.TabularPredictor.return_value.fit.call_args.kwargs["time_limit"], 30)
+                self.assertTrue(fake.TabularPredictor.return_value.fit.call_args.kwargs["learning_curves"]["use_error"])
 
     def test_prediction_checks_each_row_for_missing_features(self):
         model = MagicMock()

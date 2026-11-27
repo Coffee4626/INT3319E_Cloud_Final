@@ -1,8 +1,11 @@
 # Setup AWS cho Stratus
 
+Trạng thái account/tài nguyên hiện tại và bước chạy tiếp: [deployment-status.md](deployment-status.md).
+
 ## 1. Chuẩn bị tài khoản và máy deploy
 
-Dùng một AWS account sandbox cho môn học, bật MFA cho tài khoản quản trị. Chọn **us-east-1** theo sơ đồ.
+Dùng một AWS account sandbox cho môn học, bật MFA cho tài khoản quản trị. Có thể chọn **us-east-1** theo sơ đồ.
+Project trong phiên triển khai này được AWS ấn định **ap-southeast-2 (Sydney)**; phải dùng region này.
 Máy cần AWS CLI v2, Docker Desktop/Engine + Buildx, Node.js 22+, npm, Python 3.10+ và Git.
 Nếu dùng AWS Academy/Learner Lab, kiểm tra trước: một số lab không cho tạo IAM roles, Cognito,
 Budgets hoặc CloudFront. Template hiện tạo roles riêng; account phải cho phép các dịch vụ đó.
@@ -39,6 +42,26 @@ cập nhật, mô tả và xóa các loại tài nguyên dưới đây, cùng qu
 Kiểm tra quota EC2 On-Demand Standard vCPUs đủ cho `MAX_WORKERS × vCPU(instance)`;
 `t3.large` dùng 2 vCPU. Quota Lambda, VPC và CloudFront cũng phải còn chỗ. Nếu account mới có quota EC2=0,
 cần yêu cầu tăng quota trước.
+
+Với AWS Projects / new experience, CLI v2.32+ hỗ trợ `aws login --profile your-profile` bằng
+phiên Console hiện có. Chọn đúng project rồi kiểm tra `aws sts get-caller-identity`.
+Nếu Service Quotas báo "Unable to perform this operation. Please contact AWS Support" hoặc
+CloudFront báo "Your account must be verified", mở **Support → Account and billing → Account
+Activation → Account Verification**. Chủ account thực hiện các bước xác minh AWS yêu cầu;
+thêm quyền IAM hoặc gửi lại cùng yêu cầu quota không tự gỡ hạn chế này. Không tự suy ra cần Paid Plan.
+
+Có thể triển khai theo giai đoạn trong lúc Lambda/CloudFront chưa sẵn sàng:
+
+```bash
+ENABLE_API=false bash scripts/deploy.sh
+# Sau khi AWS mở quyền, bật API với frontend chạy trên máy:
+FRONTEND_ORIGIN=http://localhost:3000 ENABLE_API=true bash scripts/deploy.sh
+# Build ở frontend/dist có config AWS; phục vụ tại origin đã khai báo.
+# Bỏ FRONTEND_ORIGIN để deploy CloudFront khi account đã được xác minh.
+```
+
+`ENABLE_API=false` chỉ cấp storage, queues, worker/ASG, IAM, alarms. Không có API/Cognito/Lambda,
+kể cả DLQ consumer; không gửi production jobs trong trạng thái này. Quota EC2=0 vẫn ngăn worker launch.
 
 ## 2. Deploy tự động
 
@@ -111,7 +134,7 @@ Frontend tự xử lý PKCE, refresh khi token gần hết hạn; không có cli
 3. Chọn `churn` làm target cho mẫu, kiểm tra feature/duplicate/missing, **Áp dụng & tiếp tục**.
 4. Chọn classification, thời gian 60 giây rồi **Bắt đầu huấn luyện**.
 5. Job ở `QUEUED` khi EC2 boot/pull image. Sau đó chuyển `TRAINING → COMPLETED`.
-6. Xem validation metric, chọn **Triển khai endpoint**, lưu API key.
+6. Xem validation leaderboard và test metrics riêng, chọn **Triển khai endpoint**, lưu API key.
 7. Mở playground, gửi JSON rows. Trong ứng dụng khác, dùng cURL mẫu và `X-Api-Key` riêng.
 
 API key là credential riêng của ứng dụng, được kiểm tra trong Lambda bằng SHA-256 + constant-time compare.

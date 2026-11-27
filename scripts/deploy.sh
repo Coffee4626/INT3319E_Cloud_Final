@@ -3,6 +3,8 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 export AWS_DEFAULT_REGION="${AWS_DEFAULT_REGION:-us-east-1}"
 stack="${STACK_NAME:-stratus-automl}"
+enable_api="${ENABLE_API:-true}"
+[[ "$enable_api" == true || "$enable_api" == false ]] || { echo 'ENABLE_API must be true or false' >&2; exit 1; }
 if [[ ! "$stack" =~ ^[a-z][a-z0-9-]{2,29}$ ]]; then
   echo 'STACK_NAME must be 3–30 lowercase letters/digits/hyphens, starting with a letter.' >&2
   exit 1
@@ -31,8 +33,12 @@ if [[ -z "${VPC_ID:-}" && -z "${SUBNET_IDS:-}" ]]; then
 fi
 : "${VPC_ID:?Set both VPC_ID and SUBNET_IDS, or leave both unset for automatic network creation}"
 : "${SUBNET_IDS:?Set both VPC_ID and SUBNET_IDS, or leave both unset for automatic network creation}"
-aws cloudformation deploy --stack-name "$stack-web" --template-file infra/frontend.yaml --no-fail-on-empty-changeset
-origin=$(output "$stack-web" WebUrl)
+origin="${FRONTEND_ORIGIN:-}"
+if [[ -z "$origin" && "$enable_api" == true ]]; then
+  aws cloudformation deploy --stack-name "$stack-web" --template-file infra/frontend.yaml --no-fail-on-empty-changeset --parameter-overrides EnableHosting=true
+  origin=$(output "$stack-web" WebUrl)
+fi
+origin="${origin:-http://localhost:3000}"
 aws cloudformation deploy --stack-name "$stack-registry" --template-file infra/registry.yaml --no-fail-on-empty-changeset
 repo=$(output "$stack-registry" RepositoryUri)
 tag="$(date -u +%Y%m%d%H%M%S)-$(git rev-parse --short HEAD 2>/dev/null || echo init)"
@@ -43,11 +49,20 @@ aws cloudformation deploy --stack-name "$stack" --template-file infra/template.y
   --capabilities CAPABILITY_IAM CAPABILITY_AUTO_EXPAND --no-fail-on-empty-changeset \
   --parameter-overrides "ImageUri=$repo@$digest" "VpcId=$VPC_ID" "SubnetIds=$SUBNET_IDS" \
   "AllowedOrigin=$origin" "WorkerInstanceType=${WORKER_INSTANCE_TYPE:-t3.large}" \
-  "MaxWorkers=${MAX_WORKERS:-2}" "BudgetEmail=${BUDGET_EMAIL:-}"
+  "MaxWorkers=${MAX_WORKERS:-2}" "BudgetEmail=${BUDGET_EMAIL:-}" "EnableApi=$enable_api"
+if [[ "$enable_api" == false ]]; then
+  aws cloudformation describe-stacks --stack-name "$stack" --query 'Stacks[0].Outputs' --output table
+  echo 'Storage, queue and worker infrastructure deployed. API/Cognito/Lambda are disabled; enable after account restrictions are resolved.'
+  exit 0
+fi
 npm --prefix frontend ci
 npm --prefix frontend run build
 aws cloudformation describe-stacks --stack-name "$stack" --output json | \
   python3 scripts/write_config.py --region "$AWS_DEFAULT_REGION" --output frontend/dist/config.js
+if [[ -n "${FRONTEND_ORIGIN:-}" ]]; then
+  printf '\nBackend deployed. Serve frontend/dist at %s (config.js contains public AWS settings).\n' "$origin"
+  exit 0
+fi
 bucket=$(output "$stack-web" WebBucket)
 distribution=$(output "$stack-web" DistributionId)
 # Keep old hashed assets available during CloudFront propagation / browser sessions.

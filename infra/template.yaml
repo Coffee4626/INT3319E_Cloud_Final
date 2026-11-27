@@ -4,9 +4,14 @@ Description: Stratus AutoML - authenticated API, datasets, training, deployment 
 Metadata:
   cfn-lint:
     config:
-      # SAM-generated usage-plan resources contain redundant DependsOn entries.
-      ignore_checks: [W3005]
+      # SAM-generated permissions repeat ApiEnabled and add redundant dependencies.
+      ignore_checks: [W3005, W1028]
 Parameters:
+  EnableApi:
+    Type: String
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+    Description: Set false to provision storage, queue and workers before the API layer
   ImageUri:
     Type: String
     Description: ECR image URI with immutable digest (same image for Lambda and EC2)
@@ -35,6 +40,7 @@ Parameters:
     Default: ''
     Description: Optional email for monthly budget alert
 Conditions:
+  ApiEnabled: !Equals [!Ref EnableApi, 'true']
   HasBudgetEmail: !Not [!Equals [!Ref BudgetEmail, '']]
 Globals:
   Function:
@@ -123,6 +129,7 @@ Resources:
         deadLetterTargetArn: !GetAtt DeadLetterQueue.Arn
         maxReceiveCount: 3
   UserPool:
+    Condition: ApiEnabled
     Type: AWS::Cognito::UserPool
     Properties:
       UserPoolName: !Sub '${AWS::StackName}-users'
@@ -134,6 +141,7 @@ Resources:
       AccountRecoverySetting:
         RecoveryMechanisms: [{Name: verified_email, Priority: 1}]
   UserPoolClient:
+    Condition: ApiEnabled
     Type: AWS::Cognito::UserPoolClient
     Properties:
       UserPoolId: !Ref UserPool
@@ -151,11 +159,13 @@ Resources:
       RefreshTokenValidity: 1
       TokenValidityUnits: {AccessToken: minutes, IdToken: minutes, RefreshToken: days}
   UserPoolDomain:
+    Condition: ApiEnabled
     Type: AWS::Cognito::UserPoolDomain
     Properties:
       Domain: !Sub '${AWS::StackName}-${AWS::AccountId}'
       UserPoolId: !Ref UserPool
   Api:
+    Condition: ApiEnabled
     Type: AWS::Serverless::Api
     Properties:
       StageName: prod
@@ -189,6 +199,7 @@ Resources:
             Identity:
               ValidationExpression: !Ref UserPoolClient
   Controller:
+    Condition: ApiEnabled
     Type: AWS::Serverless::Function
     Properties:
       PackageType: Image
@@ -252,6 +263,7 @@ Resources:
           Type: Api
           Properties: {RestApiId: !Ref Api, Path: /health, Method: get}
   Predict:
+    Condition: ApiEnabled
     Type: AWS::Serverless::Function
     Properties:
       PackageType: Image
@@ -276,6 +288,7 @@ Resources:
             Method: post
             Auth: {Authorizer: NONE}
   DlqProcessor:
+    Condition: ApiEnabled
     Type: AWS::Serverless::Function
     Properties:
       PackageType: Image
@@ -294,16 +307,19 @@ Resources:
             BatchSize: 10
             FunctionResponseTypes: [ReportBatchItemFailures]
   DlqLogs:
+    Condition: ApiEnabled
     Type: AWS::Logs::LogGroup
     Properties:
       LogGroupName: !Sub '/aws/lambda/${DlqProcessor}'
       RetentionInDays: 14
   ControllerLogs:
+    Condition: ApiEnabled
     Type: AWS::Logs::LogGroup
     Properties:
       LogGroupName: !Sub '/aws/lambda/${Controller}'
       RetentionInDays: 7
   PredictLogs:
+    Condition: ApiEnabled
     Type: AWS::Logs::LogGroup
     Properties:
       LogGroupName: !Sub '/aws/lambda/${Predict}'
@@ -504,6 +520,7 @@ Resources:
       ComparisonOperator: GreaterThanThreshold
       TreatMissingData: notBreaching
   PredictErrorsAlarm:
+    Condition: ApiEnabled
     Type: AWS::CloudWatch::Alarm
     Properties:
       Namespace: AWS/Lambda
@@ -517,12 +534,16 @@ Resources:
       TreatMissingData: notBreaching
 Outputs:
   ApiUrl:
+    Condition: ApiEnabled
     Value: !Sub 'https://${Api}.execute-api.${AWS::Region}.amazonaws.com/prod'
   UserPoolId:
+    Condition: ApiEnabled
     Value: !Ref UserPool
   UserPoolClientId:
+    Condition: ApiEnabled
     Value: !Ref UserPoolClient
   CognitoDomain:
+    Condition: ApiEnabled
     Value: !Sub 'https://${UserPoolDomain}.auth.${AWS::Region}.amazoncognito.com'
   BucketName:
     Value: !Ref DataBucket
