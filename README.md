@@ -53,7 +53,7 @@ aws sso login --profile your-profile
 export AWS_PROFILE=your-profile
 export AWS_DEFAULT_REGION=ap-southeast-2
 export STACK_NAME=stratus-automl
-export MAX_WORKERS=1
+export MAX_WORKERS=3
 export WORKER_INSTANCE_TYPE=m7i-flex.large
 export FRONTEND_ORIGIN=https://int3319e-cloud-final.binhyb2.workers.dev
 export CONTROL_MEMORY_MB=512

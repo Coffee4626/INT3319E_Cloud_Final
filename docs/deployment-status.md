@@ -92,7 +92,7 @@ Dashboard chưa đọc số lượng EC2/CPU trực tiếp; mục hạ tầng hi
 ## Cập nhật deployment
 
 Dùng [cloudflare-backend.md](cloudflare-backend.md) để đăng nhập và deploy đúng account/region.
-Giữ `WORKER_INSTANCE_TYPE=m7i-flex.large`, `MAX_WORKERS=1`, `CONTROL_MEMORY_MB=512`, `PREDICT_MEMORY_MB=512`
+Giữ `WORKER_INSTANCE_TYPE=m7i-flex.large`, `MAX_WORKERS=3`, `CONTROL_MEMORY_MB=512`, `PREDICT_MEMORY_MB=512`
 và `INFERENCE_MODE=ec2`, `INFERENCE_INSTANCE_TYPE=m7i-flex.large`.
 
 `frontend/public/config.js` chỉ chứa thông tin public, không chứa AWS credentials. Build variables `STRATUS_*`
@@ -161,3 +161,20 @@ and dataset status polling, avoiding API Gateway request timeouts. These operati
 do not queue training jobs. A controller-only image built with `Dockerfile.controller`
 from the existing immutable model image preserves trained-model compatibility and
 leaves worker/inference EC2 images unchanged. Full deployments clear the controller override.
+
+## Parallel training and inference power
+
+The deployed training group allows 0–3 m7i-flex.large workers. The regional Standard
+On-Demand quota is 8 vCPU: three 2-vCPU workers plus the separate 2-vCPU inference
+host fit this quota. Queue step scaling adds 1, 2 or 3 workers for visible backlogs
+of 1, 2 or at least 3, capped by MaxWorkers, with 180 seconds of warmup. SQS metrics
+and instance startup are asynchronous; brief jobs may finish before additional
+workers become ready. The idle alarm still returns the group to zero after 15 minutes.
+
+To pause inference in ap-southeast-2, select EC2 instance `stratus-automl-inference`
+(`i-0fc79d59ea5b6ea40`) and choose Instance state → Stop instance. Later choose
+Start instance. Docker is enabled on boot and the inference container uses
+`--restart always`. Lambda connects to its retained private IP, so the API endpoint
+and API keys remain valid. Inference requests fail while the instance is stopped
+or starting; the first prediction must reload the model. S3 model artifacts remain.
+Stopped instances do not incur EC2 compute charges, but their EBS storage remains billed.

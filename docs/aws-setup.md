@@ -67,7 +67,7 @@ kể cả DLQ consumer; không gửi production jobs trong trạng thái này. Q
 
 ```bash
 export STACK_NAME=stratus-automl       # 3–30 ký tự thường/số/dấu -, bắt đầu bằng chữ
-export MAX_WORKERS=1                  # 1–10, mặc định 2
+export MAX_WORKERS=3                  # 1–10, mặc định 3; 3 worker + inference cần 8 vCPU với máy 2 vCPU
 export WORKER_INSTANCE_TYPE=m7i-flex.large  # x86_64, 2 vCPU / 8 GiB
 export FRONTEND_ORIGIN=https://int3319e-cloud-final.binhyb2.workers.dev
 # Giới hạn Lambda đã quan sát trên account mới; tăng nếu AWS cho phép:
@@ -175,8 +175,8 @@ artifact riêng cho từng model. `/deploy` xuất bản mapping + key; không c
 Mở **EC2 → Auto Scaling Groups → `<stack>-workers`**:
 
 - Ban đầu `Desired=0`, `Min=0`, `Max=MAX_WORKERS`.
-- Gửi một hoặc nhiều jobs. Alarm `QueueHasWork` theo visible SQS messages sẽ tăng thêm 1 worker,
-  cooldown 300 giây, không vượt Max. ASG có thể mất vài phút mới boot và pull xong image.
+- Gửi một hoặc nhiều jobs. Alarm `QueueHasWork` dùng step scaling theo visible SQS messages: 1 job chờ tăng 1 worker,
+  2 job tăng 2, từ 3 job tăng 3; warmup 180 giây và không vượt Max. ASG có thể mất vài phút mới boot và pull xong image.
   SQS mới hoặc vừa hoạt động lại có thể mất tới 15 phút trước khi CloudWatch nhận metric;
   lần chạy đầu có thể ở trạng thái chờ lâu hơn. Xem [tài liệu SQS](https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/monitoring-using-cloudwatch.html).
 - Worker xử lý một job mỗi lần; các worker xử lý song song.

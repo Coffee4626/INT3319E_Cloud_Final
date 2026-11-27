@@ -29,7 +29,7 @@ Parameters:
     Default: t3.large
   MaxWorkers:
     Type: Number
-    Default: 2
+    Default: 3
     MinValue: 1
     MaxValue: 10
   AllowedOrigin:
@@ -681,9 +681,14 @@ Resources:
     Type: AWS::AutoScaling::ScalingPolicy
     Properties:
       AutoScalingGroupName: !Ref Workers
+      PolicyType: StepScaling
       AdjustmentType: ChangeInCapacity
-      ScalingAdjustment: 1
-      Cooldown: '300'
+      EstimatedInstanceWarmup: 180
+      MetricAggregationType: Maximum
+      StepAdjustments:
+        - {MetricIntervalLowerBound: 0, MetricIntervalUpperBound: 2, ScalingAdjustment: 1}
+        - {MetricIntervalLowerBound: 2, MetricIntervalUpperBound: 3, ScalingAdjustment: 2}
+        - {MetricIntervalLowerBound: 3, ScalingAdjustment: 3}
   ScaleToZero:
     Type: AWS::AutoScaling::ScalingPolicy
     Properties:
