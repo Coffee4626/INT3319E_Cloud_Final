@@ -856,3 +856,14 @@ body {
     background: #172d4c66;
   }
 }
+/* Invitation-only workspace entry. */
+.st-auth { min-height: 100vh; background: radial-gradient(ellipse at 50% 10%, #dceaff 0, #f5f8fd 45%, #fff 100%); padding: 28px; }
+.st-auth > header { max-width: 1180px; margin: 0 auto; }
+.st-auth-card { max-width: 510px; margin: 9vh auto 40px; padding: 44px; border: 1px solid #dde5ef; border-radius: 24px; background: #fff; box-shadow: 0 20px 70px #173b6e0c; display: flex; flex-direction: column; align-items: flex-start; gap: 18px; }
+.st-auth-icon { width: 60px; height: 60px; display: grid; place-items: center; color: #2563eb; background: #edf4ff; border-radius: 18px; }
+.st-auth-card h1 { margin: 0; font-size: clamp(26px, 4vw, 34px); letter-spacing: -1px; }
+.st-auth-card p { margin: 0; color: #607086; line-height: 1.7; }
+.st-auth-card > .st-btn { width: 100%; justify-content: center; }
+.st-auth-card .st-auth-help { font-size: 13px; }
+.st-auth-card .st-alert { width: 100%; }
+@media (max-width: 560px) { .st-auth { padding: 20px; } .st-auth-card { margin-top: 7vh; padding: 28px 22px; } }

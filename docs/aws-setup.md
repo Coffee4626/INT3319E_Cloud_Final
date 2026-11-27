@@ -39,7 +39,7 @@ cập nhật, mô tả và xóa các loại tài nguyên dưới đây, cùng qu
 | CloudWatch Logs/Alarms | Log groups, retention, metric alarms |
 | Budgets (tùy chọn) | Create/update budget nếu đặt BUDGET_EMAIL |
 
-Kiểm tra quota EC2 On-Demand Standard vCPUs đủ cho `MAX_WORKERS × vCPU(instance)`;
+Kiểm tra quota EC2 On-Demand Standard vCPUs đủ cho `MAX_WORKERS × vCPU(instance)` cộng máy inference nếu dùng EC2;
 `t3.large` dùng 2 vCPU. Quota Lambda, VPC và CloudFront cũng phải còn chỗ. Nếu account mới có quota EC2=0,
 cần yêu cầu tăng quota trước.
 
@@ -84,16 +84,16 @@ Script thực hiện:
 
 1. Xác minh CLI, Docker và account hiện tại; nếu stack đã tồn tại thì kiểm tra queue rỗng.
 2. Tạo `stratus-automl-network`: VPC, hai public subnet khác AZ, Internet Gateway, route table.
-3. Tạo `stratus-automl-web`: bucket frontend private + CloudFront OAC + HTTPS mặc định.
+3. Nếu không đặt `FRONTEND_ORIGIN`, tạo `stratus-automl-web`: bucket frontend private + CloudFront OAC. Với Cloudflare, bỏ qua bước này.
 4. Tạo `stratus-automl-registry`: ECR immutable tags và scan-on-push.
 5. Build runtime `linux/amd64` từ Lambda Python 3.12, cài AutoGluon 1.4 + LightGBM,
    kiểm tra import/dependencies, push ECR, lấy digest bất biến.
 6. Deploy `stratus-automl`: API Gateway, Cognito, controller/predict/DLQ Lambda, S3, DynamoDB,
-   SQS/DLQ, EC2 ASG, IAM, logs, scaling alarms, optional budget.
-7. Build frontend, tạo `config.js` từ outputs (không chứa secret), upload S3 và invalidate CloudFront.
+   SQS/DLQ, EC2 ASG, máy inference riêng nếu bật, IAM, logs, scaling alarms, optional budget.
+7. Build frontend, tạo `config.js` từ outputs (không chứa secret). Với CloudFront, upload S3 và invalidate cache; với Cloudflare, publish từ nhánh Git đã cấu hình.
 
-Lần đầu có thể cần nhiều phút để CloudFront provision và tải dependencies. Khi CloudFront invalidation
-đang chạy, hãy chờ hoàn tất trước khi kiểm tra bản mới. Script in URL frontend và stack outputs.
+Lần đầu có thể cần nhiều phút để tạo IAM, EC2, kết nối Lambda VPC và tải dependencies.
+Script in URL frontend và stack outputs. Nếu dùng CloudFront, chờ invalidation hoàn tất trước khi kiểm tra bản mới.
 
 Nếu đã có default VPC/public subnets, truyền cả hai biến để bỏ bước tạo network:
 
@@ -117,7 +117,7 @@ Security group chỉ cho phép cổng 8080 từ Lambda, không mở SSH hay cổ
 model S3, deployment DynamoDB và image ECR, ghi log/health signal CloudFormation.
 
 Máy **m7i-flex.large, 2 vCPU / 8 GiB**, EBS 30 GB, chạy liên tục để endpoint sẵn sàng. Worker train
-co giãn **0–1**, EBS 50 GB/worker; tổng tối đa 4 vCPU trong quota 5 vCPU của account này.
+co giãn **0–1**, EBS 50 GB/worker; tổng tối đa 4 vCPU trong quota 8 vCPU của account này.
 **Scale-to-zero của worker không tắt máy inference**; compute inference vẫn phát sinh phí khi không có job.
 Một máy inference chưa phải cấu hình HA; lỗi máy có thể làm endpoint tạm trả 503.
 

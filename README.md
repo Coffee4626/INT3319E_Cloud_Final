@@ -64,8 +64,9 @@ export INFERENCE_INSTANCE_TYPE=m7i-flex.large
 bash scripts/deploy.sh
 ```
 
-Script tự tạo VPC hai public subnet nếu không truyền `VPC_ID` và `SUBNET_IDS`, tạo CloudFront/S3 frontend,
-build image **amd64**, push ECR theo digest, deploy backend rồi xuất `/config.js` và publish frontend.
+Script tự tạo VPC hai public subnet nếu không truyền `VPC_ID` và `SUBNET_IDS`, build image **amd64**,
+push ECR theo digest, deploy backend rồi xuất `/config.js`. Khi đặt `FRONTEND_ORIGIN` như trên,
+frontend được Cloudflare deploy từ Git; bỏ biến này nếu muốn script tạo/publish CloudFront + S3.
 AWS CLI v2, Docker Buildx, Node.js 22+, npm và Python 3.10+ cần có trên máy deploy.
 Không cần SAM CLI. AWS tài khoản thật có phát sinh phí; script không tự chạy khi bạn mở repository.
 

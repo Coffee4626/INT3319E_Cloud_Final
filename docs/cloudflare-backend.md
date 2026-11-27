@@ -27,7 +27,7 @@ export INFERENCE_INSTANCE_TYPE=m7i-flex.large
 python3 scripts/check_aws.py
 ```
 
-Tài khoản mới có EC2 Standard quota 5 vCPU; một worker và một máy inference dùng tổng 4 vCPU.
+Tài khoản mới có EC2 Standard quota 8 vCPU; một worker và một máy inference dùng tổng 4 vCPU.
 Lambda hiện chỉ cho phép tối đa 512 MB mỗi function. Inference chạy trên EC2 riêng; Lambda chỉ chuyển tiếp request. Kiểm tra quota không thay thế
 việc thử upload, train và inference thực tế.
 
@@ -120,3 +120,13 @@ Không tắt Cognito hoặc `AUTH_REQUIRED` để sửa lỗi kết nối.
 Tài liệu: [Workers Builds](https://developers.cloudflare.com/workers/ci-cd/builds/configuration/),
 [SPA routing](https://developers.cloudflare.com/workers/static-assets/routing/single-page-application/),
 [setup AWS trong repository](aws-setup.md).
+
+## Thêm hoặc thu hồi quyền người dùng
+
+Chỉ quản trị viên tạo tài khoản trong **Cognito → User pools → `ap-southeast-2_a0gSirlAO` → Users → Create user**.
+Nhập email được cho phép và chọn gửi lời mời. Người đó đăng nhập bằng email/mật khẩu tạm, rồi tự đặt mật khẩu mới.
+Không có tự đăng ký và không phải mọi tài khoản Gmail đều được vào. Đây là đăng nhập bằng email qua Cognito, chưa cấu hình Google SSO.
+
+Toàn bộ `/app/...` bị chặn ở màn hình đăng nhập khi chưa có phiên hợp lệ; API Gateway vẫn là lớp xác thực bắt buộc phía server.
+Thu hồi quyền bằng **Disable user** và **Sign out** trong Cognito. Token JWT đã phát hành có thể còn được API chấp nhận tới khi hết hạn (hiện 60 phút); refresh bị chặn sau khi thu hồi. Xem [cách Cognito thu hồi token](https://docs.aws.amazon.com/cognito/latest/developerguide/token-revocation.html).
+Endpoint `/predict/{id}` dành cho ứng dụng khách dùng khóa API riêng do chủ mô hình cấp, không cho gọi vô danh.

@@ -105,7 +105,7 @@ EC2 chạy `python -m app.inference_server`, nạp dependency trước khi healt
 Security group chỉ nhận từ Lambda; key vẫn được kiểm tra bởi `PredictionService` trên EC2.
 Một request mỗi lần bảo vệ model cache; request đồng thời trả 429. Proxy lỗi kết nối/timeout trả 503.
 Máy inference 2 vCPU/8 GiB duy trì endpoint ngay cả khi worker train về 0. Worker train tối đa 1 máy
-trong quota 5 vCPU. Bản này có một máy inference, chưa có HA/cân bằng tải.
+trong quota 8 vCPU. Bản này có một máy inference, chưa có HA/cân bằng tải.
 
 Template vẫn hỗ trợ `INFERENCE_MODE=lambda` khi account có quota phù hợp. EC2 inference dùng
 launch-template version; đổi image bắt buộc thay instance, tránh máy giữ runtime cũ.

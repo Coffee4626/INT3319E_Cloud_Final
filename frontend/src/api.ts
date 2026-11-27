@@ -13,7 +13,7 @@ declare global {
 }
 export const config: Config = window.STRATUS_CONFIG || {
   apiUrl: "/api",
-  local: true,
+  local: ["localhost", "127.0.0.1", "[::1]"].includes(location.hostname),
   region: "us-east-1",
 };
 const base64url = (bytes: Uint8Array) =>
@@ -24,13 +24,32 @@ const base64url = (bytes: Uint8Array) =>
 type Tokens = { id_token: string; refresh_token: string; expires_at: number };
 function tokens(): Tokens | null {
   try {
-    return JSON.parse(sessionStorage.getItem("stratus.tokens") || "null");
+    const value = JSON.parse(sessionStorage.getItem("stratus.tokens") || "null");
+    return value && typeof value.id_token === "string" && value.id_token.split(".").length === 3
+      && typeof value.refresh_token === "string" && value.refresh_token.length > 0
+      && Number.isFinite(value.expires_at) ? value : null;
   } catch {
     return null;
   }
 }
 export function signedIn() {
   return config.local || !!tokens();
+}
+function clearSession() {
+  sessionStorage.removeItem("stratus.tokens");
+  window.dispatchEvent(new Event("stratus:session-expired"));
+}
+export async function verifySession() {
+  if (config.local) return true;
+  if (!signedIn()) return false;
+  try {
+    // The API authorizer verifies the token; browser storage alone grants no access.
+    await api("/health");
+    return true;
+  } catch {
+    clearSession();
+    throw new Error("Không thể xác minh phiên đăng nhập. Vui lòng đăng nhập lại.");
+  }
 }
 export async function signIn() {
   if (config.local) {
@@ -39,6 +58,9 @@ export async function signIn() {
   }
   if (!config.clientId || !config.cognitoDomain)
     throw new Error("Chưa cấu hình Cognito. Kiểm tra cài đặt AWS.");
+  sessionStorage.setItem("stratus.returnTo",
+    location.pathname === "/app" || location.pathname.startsWith("/app/")
+      ? location.pathname + location.search : "/app");
   const verifier = base64url(crypto.getRandomValues(new Uint8Array(48)));
   const state = base64url(crypto.getRandomValues(new Uint8Array(24)));
   sessionStorage.setItem("stratus.pkce", JSON.stringify({ verifier, state }));
@@ -86,7 +108,9 @@ export async function completeSignIn() {
     }),
   );
   sessionStorage.removeItem("stratus.pkce");
-  history.replaceState({}, "", "/app");
+  const returnTo = sessionStorage.getItem("stratus.returnTo") || "/app";
+  sessionStorage.removeItem("stratus.returnTo");
+  history.replaceState({}, "", /^\/app(?:\/|\?|$)/.test(returnTo) ? returnTo : "/app");
 }
 let refresh: Promise<string> | null = null;
 async function bearer(): Promise<string> {
@@ -106,7 +130,7 @@ async function bearer(): Promise<string> {
       });
       const data = await result.json();
       if (!result.ok) {
-        sessionStorage.removeItem("stratus.tokens");
+        clearSession();
         throw new Error("Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.");
       }
       sessionStorage.setItem(
@@ -161,10 +185,12 @@ export async function api<T>(
       `API không trả về JSON hợp lệ (HTTP ${result.status}). Kiểm tra kết nối dịch vụ API.`,
     );
   }
-  if (!result.ok)
+  if (!result.ok) {
+    if (result.status === 401 && deploymentKey === undefined && !config.local) clearSession();
     throw new Error(
       data.error || data.message || `Yêu cầu thất bại (${result.status})`,
     );
+  }
   return data;
 }
 export type Column = {

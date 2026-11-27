@@ -31,10 +31,13 @@ Không tạo CloudFront; frontend được Cloudflare phục vụ. Budget email 
 | ECR | `stratus-automl-registry-registry-ahcflaooa3yl` |
 | ASG | `stratus-automl-workers` |
 | Worker logs | `stratus-automl-WorkerLogs-mKkV8RjfFPUa` |
+| Inference instance | `i-0a09ff224b6517564` |
+| Inference logs | `stratus-automl-InferenceLogs-St4PnloVNzIT` |
+| Runtime digest | `sha256:e74d9917f96cd970328624946b66a583b46f425d497b2179eba51fbe932bd111` |
 
 ## Cấu hình compute
 
-EC2 Standard quota **5 vCPU**. ASG có Min=0, Max=1; worker **m7i-flex.large**, 2 vCPU / 8 GiB RAM.
+EC2 Standard quota **8 vCPU**. ASG có Min=0, Max=1; worker **m7i-flex.large**, 2 vCPU / 8 GiB RAM.
 Đã kiểm tra instance type và AMI có thuộc loại được account cho phép tạo. Security group không mở inbound/SSH;
 worker dùng instance role, IMDSv2, public IPv4 để tải image và truy cập dịch vụ AWS.
 
@@ -50,15 +53,29 @@ với 512 MB; Predict chuyển tiếp request tới EC2 trong VPC, timeout HTTP 
 
 ## Bằng chứng kiểm thử
 
-- 41 tests Python, 13 tests frontend, TypeScript/Vite build, CloudFormation lint: pass.
-- GitHub backend/frontend CI và Cloudflare Workers Builds cho commit `9192127`: success.
-- Production `/config.js` đã chứa đúng API/Cognito mới; `/app` trả 200.
+- 41 tests Python, 18 tests frontend, TypeScript/Vite build, CloudFormation lint: pass.
+- GitHub backend/frontend CI và Cloudflare Workers Builds cho commit `07c1df3`: success.
+- Production `/config.js` đã chứa đúng API/Cognito mới và `inferenceMode=ec2`, cache-control no-store; `/app` trả 200.
+- Màn hình khóa workspace đã kiểm tra bằng Chrome headless ở desktop và viewport 390 px, không có tràn ngang.
 - Cognito Hosted UI trả form đăng nhập; SRP login bằng tài khoản kiểm thử tạm thành công.
+- Cognito `AllowAdminCreateUserOnly=true`; hiện chỉ có email được mời `ducluu.lqd@gmail.com`. Không mở tự đăng ký. Toàn bộ workspace yêu cầu đăng nhập, xác minh phiên qua API trước khi hiển thị; token bị từ chối sẽ đóng workspace.
 - API quản trị từ chối request không đăng nhập với 401; CORS API/S3 và callback/logout Cognito đúng domain Cloudflare.
 - Upload CSV thật lên S3 và profile/preprocess qua API thành công. Đã sửa presigned POST sang S3 regional hostname để tránh HTTP 307 trên bucket mới.
 - Hai job classification/regression đã được gửi vào SQS; ASG tự đổi Desired từ 0 sang 1.
 - Hai mô hình đã train xong, có đường cong và test holdout. Lambda inference 512 MB timeout sau 28 giây ở cold request (227 MB peak); triển khai đã chuyển sang EC2 riêng để tránh hạn chế compute.
-- Inference EC2 và chu kỳ scale về 0 đang được xác minh; chưa coi hoàn tất cho tới khi kiểm thử trả kết quả.
+- **Smoke toàn luồng trên cấu hình EC2 inference: PASS** cho classification và regression, mỗi bài 240 dòng, 48 dòng holdout. Upload/profile/preprocess, queue/train, metrics/curves, deploy, first/warm inference, từ chối key sai đều đã được kiểm tra qua API thật.
+- EC2 inference đã báo health check 200; CloudFormation UPDATE_COMPLETE. Security group thực tế chỉ mở 8080 từ Lambda SG; không có public inbound/SSH.
+- **Auto Scaling 0 → 1 → 0: PASS.** Alarm QueueHasWork tăng Desired 0 → 1 lúc 17:33:32, worker `i-02f93a624532616ce` train xong. Alarm QueueIdle tự giảm 1 → 0 lúc 17:51:24; lúc 17:52:33 nhóm không còn instance. Các mốc dùng giờ Việt Nam. Máy inference vẫn chạy riêng; không dùng thao tác thủ công để kết thúc chu kỳ kiểm thử này.
+
+| Bài kiểm thử | Job | Chỉ số trên test holdout | Lần dự đoán đầu / gọi lại |
+| --- | --- | --- | --- |
+| Classification | `026787e1a2834cdbb742927a19d2895e` | Accuracy / balanced accuracy / weighted F1 = 1.0 | 2295 / 1035 ms |
+| Regression | `a0078803f7774c26a107f7d150fabb9a` | MAE 7.2228, RMSE 11.6618, R² 0.9940 | 1164 / 1269 ms |
+
+Cả hai có 120 điểm đường cong thật (log loss hoặc RMSE). Đây là dữ liệu kiểm thử đơn giản, không phải
+cam kết chất lượng hoặc latency cho dữ liệu người dùng. Thời gian gồm mạng từ máy chạy kiểm thử.
+Các deployment kiểm thử: `8e1247f1230a45d58475c48f822de2a4`, `1d696f0965464f47822a0c4ef8b79bf6`.
+Tài khoản kiểm thử tạm đã được xóa; tài khoản người dùng không bị thay đổi.
 
 ## Dùng ứng dụng
 

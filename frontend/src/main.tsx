@@ -2,7 +2,7 @@ import React from "react";
 import { createRoot } from "react-dom/client";
 import "./styles.css";
 import App from "./Studio";
-import { completeSignIn } from "./api";
+import { completeSignIn, verifySession } from "./api";
 
 async function main() {
   let error = "";
@@ -12,6 +12,11 @@ async function main() {
     } catch (e) {
       error = (e as Error).message;
     }
+  }
+  try {
+    await verifySession();
+  } catch (e) {
+    error = (e as Error).message;
   }
   createRoot(document.getElementById("root")!).render(
     <React.StrictMode>

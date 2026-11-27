@@ -20,6 +20,7 @@ import {
   Database,
   ChevronRight,
   Activity,
+  ShieldCheck,
 } from "lucide-react";
 import { config, signedIn, signIn, signOut } from "./api";
 import { LiveDatasets } from "./App";
@@ -50,6 +51,7 @@ function Brand({ onClick }: { onClick: () => void }) {
 export default function Studio({ authError }: { authError: string }) {
   const [path, setPath] = useState(location.pathname + location.search),
     [menu, setMenu] = useState(false),
+    [authenticated, setAuthenticated] = useState(signedIn),
     [notice, setNotice] = useState(authError),
     [keys, setKeys] = useState<Record<string, string>>({});
   useEffect(() => {
@@ -58,7 +60,16 @@ export default function Studio({ authError }: { authError: string }) {
       setMenu(false);
     };
     window.addEventListener("popstate", changed);
-    return () => window.removeEventListener("popstate", changed);
+    const expired = () => {
+      setAuthenticated(false);
+      setKeys({});
+      setNotice("Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.");
+    };
+    window.addEventListener("stratus:session-expired", expired);
+    return () => {
+      window.removeEventListener("popstate", changed);
+      window.removeEventListener("stratus:session-expired", expired);
+    };
   }, []);
   const go = (next: string) => {
     history.pushState({}, "", next);
@@ -94,6 +105,22 @@ export default function Studio({ authError }: { authError: string }) {
     return (
       <div className="st-root">
         <Landing go={go} />
+      </div>
+    );
+  if (!authenticated)
+    return (
+      <div className="st-root st-auth">
+        <header><Brand onClick={() => go("/")} /></header>
+        <main className="st-auth-card">
+          <span className="st-auth-icon"><ShieldCheck size={30} /></span>
+          <span className="st-eyebrow">KHÔNG GIAN RIÊNG TƯ</span>
+          <h1>Đăng nhập vào Stratus</h1>
+          <p>Chỉ tài khoản được quản trị viên mời mới có thể truy cập dữ liệu, huấn luyện và triển khai mô hình.</p>
+          {notice && <div className="st-alert error" role="alert">{notice}</div>}
+          <button className="st-btn" onClick={login}><LogIn size={18} /> Đăng nhập bằng email được mời</button>
+          <p className="st-auth-help">Lần đầu đăng nhập? Dùng mật khẩu tạm trong email mời, sau đó đặt mật khẩu mới của bạn.</p>
+          <button className="st-btn ghost" onClick={() => go("/")}>Về trang chủ</button>
+        </main>
       </div>
     );
   return (
@@ -290,7 +317,7 @@ function Landing({ go }: { go: (p: string) => void }) {
           <a href="#tasks">Khám phá bài toán</a>
           <a href="#architecture">Kiến trúc</a>
           <button className="st-btn secondary" onClick={() => go("/app")}>
-            Mở Studio
+            {signedIn() ? "Mở Studio" : "Đăng nhập"}
           </button>
         </nav>
       </header>
