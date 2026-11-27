@@ -11,7 +11,7 @@ Cần Docker Desktop/Engine + Compose v2. Trên Apple Silicon, image ML chạy `
 docker compose up --build -d
 ```
 
-Mở **http://localhost:3000**. Chọn **Thí nghiệm mới → Dùng mẫu → Áp dụng & tiếp tục → Bắt đầu huấn luyện**.
+Mở **http://localhost:3000**. Chọn Thí nghiệm mới → Dùng mẫu → Áp dụng & tiếp tục → Bắt đầu huấn luyện.
 Sau khi hoàn thành, chọn **Triển khai endpoint → Thử dự đoán**. Có thể dùng CSV riêng.
 
 - Frontend: http://localhost:3000
