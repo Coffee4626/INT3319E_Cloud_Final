@@ -125,3 +125,14 @@ test("Supported image and tabular tasks have explicit models and data contracts"
     assert.ok([".csv", ".zip"].includes(t.accept));
   }
 });
+
+test("Image ZIP size gate accepts under 200 MB and rejects above it", async () => {
+  const names = ['train/a/1.png', 'train/b/2.png', 'val/a/3.png', 'val/b/4.png'];
+  const allowed = zip(names);
+  // Isolate the byte-size gate while retaining a small valid central directory.
+  Object.defineProperty(allowed, 'size', { value: 199_999_999 });
+  assert.equal((await inspectFile(allowed, taskById('image-classification'))).count, 4);
+  const tooLarge = zip(names);
+  Object.defineProperty(tooLarge, 'size', { value: 200_000_001 });
+  await assert.rejects(inspectFile(tooLarge, taskById('image-classification')), /200 MB/);
+});

@@ -13,6 +13,14 @@ from vision_fixtures import vision_zip, png
 
 
 class VisionContracts(unittest.TestCase):
+    def test_archive_above_200_mb_is_rejected_before_opening(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "large.zip"
+            with path.open("wb") as stream:
+                stream.truncate(200_000_001)
+            with self.assertRaisesRegex(ValueError, "200 MB"):
+                inspect_archive(path, "image-classification")
+
     def inspect(self, data, task="segmentation"):
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / "data.zip"

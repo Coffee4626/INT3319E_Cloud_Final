@@ -304,7 +304,7 @@ export async function upload(file: File, task = "tabular"): Promise<Dataset> {
   const result = await fetch(ticket.upload.url, {
     method: "POST",
     body: form,
-    signal: AbortSignal.timeout(120_000),
+    signal: AbortSignal.timeout(vision ? 600_000 : 120_000),
   });
   if (!result.ok)
     throw new Error("Tải lên S3 thất bại. Kiểm tra CORS và kích thước tệp.");
