@@ -31,9 +31,9 @@ Không tạo CloudFront; frontend được Cloudflare phục vụ. Budget email 
 | ECR | `stratus-automl-registry-registry-ahcflaooa3yl` |
 | ASG | `stratus-automl-workers` |
 | Worker logs | `stratus-automl-WorkerLogs-mKkV8RjfFPUa` |
-| Inference instance | `i-08dc30f153baf8c02` |
+| Inference instance | `i-0fc79d59ea5b6ea40` |
 | Inference logs | `stratus-automl-InferenceLogs-St4PnloVNzIT` |
-| Runtime digest | `sha256:928afc72e1f4ce0f313d6b6ce2ff397c3a11d3e310aafca63880e51728e233a5` |
+| Runtime digest | `sha256:f1fa95a7e8e8856f16f53fde5d4f23ff92477b9502d01b8673cf755dde16f860` |
 
 ## Cấu hình compute
 
@@ -135,3 +135,19 @@ không phải benchmark chất lượng thực tế hoặc đo latency dưới t
 
 Không thay đổi tài khoản được mời, API URL, CORS hoặc Cognito callback. Model của digest cũ vẫn cần
 train/deploy lại theo cơ chế kiểm tra tương thích đã có; không xóa dữ liệu/model cũ.
+
+## Giới hạn ZIP 200 MB — 20:37 ngày 27/11/2026
+
+Runtime code `425ef8e`; frontend bổ sung timeout upload 10 phút trong `bccdee9`.
+Giới hạn ZIP 200.000.000 bytes được áp dụng trong UI, presigned POST S3, download và validator;
+giới hạn giải nén 400 MB. CSV vẫn 10 MB; các giới hạn số ảnh/kích thước ảnh giữ nguyên.
+
+Đã kiểm thử qua API production bằng user tạm: ZIP ảnh **190.193.358 bytes**, 44 ảnh hợp lệ,
+upload S3 khoảng 35,3 giây; complete/validate/snapshot khoảng 9,02 giây. Không tạo job, không bật
+worker. Policy S3 được giải mã và xác nhận content-length-range 200 MB. Tệp thử lớn, mọi version
+của nó, record dataset và user tạm đã được dọn sau kiểm thử.
+
+Bộ dữ liệu có sẵn cho người dùng tại `/datasets/shapes-classification.zip` và
+`/datasets/shapes-segmentation.zip`: mỗi bộ 180 train + 60 val, ảnh hình học tổng hợp 128 px.
+Các ảnh `try-circle.png`, `try-square.png`, `try-triangle.png` lấy từ val để thử inference.
+Có script tái tạo `scripts/create_image_examples.py`; không phải benchmark chất lượng thực tế.

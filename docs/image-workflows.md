@@ -137,3 +137,14 @@ docker run --rm --platform linux/amd64 --cpus=2 --memory=4g \
 
 Bài thử dùng ảnh tổng hợp rất nhỏ để xác minh fit/save/load/inference của cả bốn model;
 các điểm số thu được không chứng minh chất lượng trên dữ liệu thực tế.
+
+## Bộ dữ liệu để thử nhanh
+
+- [ZIP phân loại](https://int3319e-cloud-final.binhyb2.workers.dev/datasets/shapes-classification.zip)
+- [ZIP segmentation](https://int3319e-cloud-final.binhyb2.workers.dev/datasets/shapes-segmentation.zip)
+- [Ảnh thử inference](https://int3319e-cloud-final.binhyb2.workers.dev/datasets/try-circle.png)
+
+Mỗi bộ gồm 180 ảnh train và 60 ảnh val, 128 × 128 px, các lớp circle/square/triangle; segmentation
+thêm background. Đây là dữ liệu hình học tổng hợp, seed cố định, để thử pipeline. Ảnh inference
+lấy từ val, không phải test độc lập. Upload nguyên ZIP, không giải nén. Gợi ý MobileNet V3 Small
+hoặc U-Net Small, 5 vòng, lô 4, 128 px, 300 giây.
