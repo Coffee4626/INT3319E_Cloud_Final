@@ -14,7 +14,7 @@ Cần Docker Desktop/Engine + Compose v2. Trên Apple Silicon, image ML chạy `
 docker compose up --build -d --wait
 ```
 
-Mở **http://localhost:3000**. Chọn **Thí nghiệm mới → Dùng mẫu → Áp dụng & tiếp tục → Bắt đầu huấn luyện**.
+Mở **http://localhost:3000**. Chọn Thí nghiệm mới → Dùng mẫu → Áp dụng & tiếp tục → Bắt đầu huấn luyện.
 Sau khi hoàn thành, chọn **Triển khai endpoint → Thử dự đoán**. Có thể dùng CSV riêng.
 
 - Frontend: http://localhost:3000
@@ -148,7 +148,7 @@ npm run build
   khoảng 20% dữ liệu được giữ riêng trước khi fit để đánh giá test (seed 42, stratified với classification).
   Dataset dưới 20 dòng hoặc có lớp dưới 5 mẫu chỉ có validation và hiển thị lý do không tách test.
   Random split không phù hợp để đo tổng quát hóa cho dữ liệu thời gian hoặc nhiều dòng cùng một thực thể.
-- Model image là **runtime dùng chung** cho worker và Lambda theo sơ đồ. Artifact model nằm ở S3;
+- Model image là runtime dùng chung cho worker và Lambda theo sơ đồ. Artifact model nằm ở S3;
   deploy không build một Docker image riêng cho từng model. Chỉ model từ worker của hệ thống mới được load.
 - `time_limit` 10–600 giây là ngân sách fit của AutoGluon, không phải hard timeout cho toàn bộ job.
 - Lambda inference 28 giây, 2 GB RAM / `/tmp`. Model giới hạn 1 GB uncompressed, nhưng model nhỏ hơn
