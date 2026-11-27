@@ -46,6 +46,12 @@ class TabularTask(MLTask):
                                      problem_type=self.problem_type(data[job["target"]]))
         predictor.fit(data, time_limit=int(job["time_limit"]),
                       hyperparameters={"GBM": {}}, fit_weighted_ensemble=False)
+        leaderboard = json.loads(predictor.leaderboard(silent=True).to_json(orient="records"))
+        metrics = {"leaderboard": leaderboard, "best_model": predictor.model_best,
+                   "eval_metric": predictor.eval_metric.name, "problem_type": predictor.problem_type,
+                   "features": predictor.feature_metadata_in.get_features(), "training_rows": len(data)}
+        predictor.save_space()
+        return metrics
 
     def load(self, model_dir):
         from autogluon.tabular import TabularPredictor

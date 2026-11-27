@@ -5,3 +5,9 @@ __pycache__/
 .pytest_cache/
 .aws/
 .DS_Store
+node_modules/
+frontend/dist/
+.artifacts/
+.env.*
+!.env.example
+*.tsbuildinfo

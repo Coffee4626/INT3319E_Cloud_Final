@@ -4,3 +4,8 @@
 .aws
 **/__pycache__
 tests
+node_modules
+frontend
+.artifacts
+.github
+docs

@@ -21,8 +21,13 @@ def queue():
     return SQSJobQueue(client("sqs"), os.environ["QUEUE_URL"])
 
 
-def job_service():
-    return JobService(repository(), artifacts(), queue(), default_factory())
+def job_service(owner="local"):
+    return JobService(repository(), artifacts(), queue(), default_factory(), owner)
+
+
+def dataset_service(owner="local"):
+    from app.datasets import DatasetService
+    return DatasetService(repository(), artifacts(), owner)
 
 
 def training_service():

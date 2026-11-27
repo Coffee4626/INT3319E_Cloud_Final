@@ -56,11 +56,18 @@ class FlowTests(unittest.TestCase):
         client("dynamodb").create_table(
             TableName="automl-test", BillingMode="PAY_PER_REQUEST",
             KeySchema=[{"AttributeName": "id", "KeyType": "HASH"}],
-            AttributeDefinitions=[{"AttributeName": "id", "AttributeType": "S"}])
+            AttributeDefinitions=[{"AttributeName": k, "AttributeType": "S"} for k in ("id", "scope", "created_id")],
+            GlobalSecondaryIndexes=[{"IndexName": "by-owner", "KeySchema": [
+                {"AttributeName": "scope", "KeyType": "HASH"}, {"AttributeName": "created_id", "KeyType": "RANGE"}],
+                "Projection": {"ProjectionType": "ALL"}}])
         os.environ["QUEUE_URL"] = client("sqs").create_queue(QueueName="jobs")["QueueUrl"]
 
-    def call(self, path, payload=None, method="POST", handler=controller.handler):
-        result = handler({"httpMethod": method, "path": path, "body": json.dumps(payload or {})}, None)
+    def call(self, path, payload=None, method="POST", handler=controller.handler, headers=None, owner=None, cursor=None):
+        event = {"httpMethod": method, "path": path, "body": json.dumps(payload or {}), "headers": headers or {},
+                 "queryStringParameters": {"cursor": cursor} if cursor else {}}
+        if owner:
+            event["requestContext"] = {"authorizer": {"claims": {"sub": owner}}}
+        result = handler(event, None)
         return result["statusCode"], json.loads(result["body"])
 
     def submit(self):
@@ -90,7 +97,8 @@ class FlowTests(unittest.TestCase):
         self.assertEqual(status, 201)
         saved = table().get_item(Key={"id": "deploy#" + deployment["deployment_id"]})["Item"]
         self.assertEqual(saved["model_key"], "models/test.zip")
-        self.assertEqual(self.call(deployment["predict_path"], {"rows": []}, handler=predict.handler)[0], 400)
+        self.assertEqual(self.call(deployment["predict_path"], {"rows": []}, handler=predict.handler,
+                                   headers={"x-api-key": deployment["api_key"]})[0], 400)
 
     def test_duplicate_delivery_does_not_steal_active_training(self):
         table().put_item(Item={"id": "active", "status": "TRAINING", "lease_until": int(time.time()) + 60})
@@ -161,6 +169,122 @@ class FlowTests(unittest.TestCase):
         factory, cache = MagicMock(), MagicMock()
         PredictionService(runtime.repository(), factory, cache).predict("old", {"rows": [{"x": 1}]})
         factory.create.assert_called_once_with("tabular")
+
+    def upload(self, csv="x,y\n1,a\n2,b\n", owner=None):
+        status, ticket = self.call("/uploads", {"name": "sample.csv"}, owner=owner)
+        self.assertEqual(status, 201)
+        item = runtime.repository().get_record("dataset#" + ticket["dataset_id"])
+        client("s3").put_object(Bucket="automl-test", Key=item["upload_key"], Body=csv.encode())
+        status, dataset = self.call(f'/datasets/{ticket["dataset_id"]}/complete', {}, owner=owner)
+        self.assertEqual(status, 200, dataset)
+        return dataset
+
+    def test_upload_snapshot_and_preprocessing_are_immutable(self):
+        raw = "id,x,y\n1, 2 ,a\n1, 2 ,a\n3,,b\n4,5,\n"
+        dataset = self.upload(raw)
+        self.assertEqual(dataset["profile"]["rows"], 4)
+        self.assertEqual(dataset["profile"]["duplicates"], 1)
+        self.assertEqual(dataset["profile"]["missing_cells"], 2)
+        status, prepared = self.call(f'/datasets/{dataset["dataset_id"]}/preprocess',
+            {"target": "y", "drop_columns": ["id"], "trim_strings": True, "drop_duplicates": True})
+        self.assertEqual(status, 201, prepared)
+        self.assertEqual(prepared["profile"]["rows"], 2)
+        self.assertTrue(prepared["prepared"])
+        self.assertNotEqual(prepared["dataset_id"], dataset["dataset_id"])
+        self.assertEqual(prepared["profile"]["preview"][0], {"x": "2", "y": "a"})
+        client("s3").put_object(Bucket="automl-test", Key=dataset["upload_key"], Body=b"changed")
+        self.assertEqual(runtime.artifacts().read_csv(dataset["dataset_key"], 1000), raw)
+        self.assertEqual(self.call(f'/datasets/{dataset["dataset_id"]}/complete', {})[0], 200)
+        self.assertEqual(self.call('/jobs', {"dataset_id": dataset["dataset_id"], "task": "classification"})[0], 409)
+        status, job = self.call('/jobs', {"dataset_id": prepared["dataset_id"], "task": "classification"})
+        self.assertEqual(status, 202, job)
+
+    def test_owner_isolation_covers_dataset_job_deployment_and_lists(self):
+        dataset = self.upload(owner="alice")
+        path = f'/datasets/{dataset["dataset_id"]}'
+        self.assertEqual(self.call(path, method="GET", owner="bob")[0], 404)
+        self.assertEqual(self.call(path + "/preprocess", {"target": "y"}, owner="bob")[0], 404)
+        status, job = self.call('/jobs', {"csv": "x,y\n1,a\n2,b", "target": "y"}, owner="alice")
+        self.assertEqual(status, 202)
+        job_id = job["job_id"]
+        self.assertEqual(self.call('/jobs/' + job_id, method="GET", owner="bob")[0], 404)
+        self.assertEqual(self.call('/jobs/' + job_id + '/cancel', {}, owner="bob")[0], 404)
+        self.assertEqual(self.call('/deploy', {"job_id": job_id}, owner="bob")[0], 404)
+        self.assertEqual(self.call('/jobs', method="GET", owner="bob")[1]["items"], [])
+        self.assertEqual(len(self.call('/jobs', method="GET", owner="alice")[1]["items"]), 1)
+
+    def test_deployment_key_rotation_revocation_and_redaction(self):
+        job_id = self.submit()
+        repo = runtime.repository()
+        repo.claim(job_id, "worker", int(time.time()))
+        repo.finish(job_id, "worker", model_key="models/test.zip")
+        _, deploy = self.call('/deploy', {"job_id": job_id})
+        endpoint = deploy["predict_path"]
+        dep_id = deploy["deployment_id"]
+        self.assertEqual(self.call(endpoint, {"rows": []}, handler=predict.handler)[0], 401)
+        self.assertEqual(self.call(endpoint, {"rows": []}, handler=predict.handler,
+            headers={"X-Api-Key": deploy["api_key"]})[0], 400)
+        listed = self.call('/deployments', method="GET")[1]["items"][0]
+        self.assertNotIn('key_hash', listed)
+        self.assertNotIn(deploy["api_key"], json.dumps(listed))
+        self.assertEqual(self.call(f'/deployments/{dep_id}', method='GET', owner='bob')[0], 404)
+        _, rotated = self.call(f'/deployments/{dep_id}/key', {})
+        self.assertNotEqual(rotated["api_key"], deploy["api_key"])
+        self.assertEqual(self.call(endpoint, {"rows": []}, handler=predict.handler,
+            headers={"x-api-key": deploy["api_key"]})[0], 401)
+        self.assertEqual(self.call(f'/deployments/{dep_id}', method='DELETE')[0], 200)
+        self.assertEqual(self.call(endpoint, {"rows": []}, handler=predict.handler,
+            headers={"x-api-key": rotated["api_key"]})[0], 409)
+
+    def test_pagination_does_not_leak_another_owner(self):
+        repo = runtime.repository()
+        for i in range(35):
+            repo.create_job({"id": str(i), "status": "QUEUED", "owner": "alice"})
+        first = self.call('/jobs', method="GET", owner="alice")[1]
+        self.assertEqual(len(first["items"]), 30)
+        self.assertTrue(first["cursor"])
+        second = self.call('/jobs', method="GET", owner="alice", cursor=first["cursor"])[1]
+        self.assertEqual(len(second["items"]), 5)
+        self.assertEqual(len({i['id'] for i in first['items'] + second['items']}), 35)
+        self.assertEqual(self.call('/jobs', method="GET", owner="bob", cursor=first["cursor"])[0], 400)
+        self.assertEqual(self.call('/jobs', method="GET", cursor="bad")[0], 400)
+
+    def test_cancel_retry_and_dlq_preserve_active_lease(self):
+        from app.dlq import handler as dlq_handler
+        job_id = self.submit()
+        self.assertEqual(self.call(f'/jobs/{job_id}/cancel', {})[0], 200)
+        self.assertTrue(worker.process(job_id))
+        status, retry = self.call(f'/jobs/{job_id}/retry', {})
+        self.assertEqual(status, 202)
+        self.assertNotEqual(retry["job_id"], job_id)
+        active = retry["job_id"]
+        repo = runtime.repository()
+        repo.claim(active, 'worker', int(time.time()))
+        self.assertTrue(repo.heartbeat(active, 'worker'))
+        self.assertFalse(repo.heartbeat(active, 'other'))
+        event = {"Records": [{"body": active, "messageId": "msg"}]}
+        self.assertEqual(dlq_handler(event, None)['batchItemFailures'], [{"itemIdentifier": "msg"}])
+        table().update_item(Key={"id": active}, UpdateExpression="SET lease_until = :old",
+                            ExpressionAttributeValues={":old": 1})
+        self.assertEqual(dlq_handler(event, None)['batchItemFailures'], [])
+        self.assertEqual(repo.get_job(active)['status'], 'FAILED')
+
+    def test_auth_is_required_in_cloud_and_options_stays_public(self):
+        with patch.dict(os.environ, {"AUTH_REQUIRED": "true"}):
+            self.assertEqual(self.call('/jobs', method="GET")[0], 401)
+            self.assertEqual(self.call('/jobs', method="GET", owner="alice")[0], 200)
+            self.assertEqual(self.call('/jobs', method="OPTIONS")[0], 200)
+
+    def test_image_mismatch_cannot_deploy_or_predict(self):
+        table().put_item(Item={"id": "old-job", "status": "COMPLETED", "model_key": "m.zip", "image_uri": "old-image"})
+        self.assertEqual(self.call('/deploy', {"job_id": "old-job"})[0], 409)
+
+    def test_preprocessing_rejects_target_drop_and_invalid_schema(self):
+        dataset = self.upload()
+        path = f'/datasets/{dataset["dataset_id"]}/preprocess'
+        for payload in ({"target": "y", "drop_columns": ["y"]}, {"target": "absent"},
+                        {"target": "y", "drop_columns": "x"}, {"target": "y", "trim_strings": "false"}):
+            self.assertEqual(self.call(path, payload)[0], 400, payload)
 
 
 if __name__ == "__main__":

@@ -50,6 +50,7 @@ class TaskTests(unittest.TestCase):
             with self.subTest(task=type(task).__name__, expected=expected):
                 fake = MagicMock()
                 fake.TabularDataset.return_value = {"y": labels}
+                fake.TabularPredictor.return_value.leaderboard.return_value.to_json.return_value = '[]'
                 with patch.dict(sys.modules, {"autogluon": MagicMock(), "autogluon.tabular": fake}):
                     task.train(Path("data.csv"), Path("model"), {"target": "y", "time_limit": 30})
                 self.assertEqual(fake.TabularPredictor.call_args.kwargs["problem_type"], expected)
