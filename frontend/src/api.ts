@@ -4,6 +4,7 @@ export type Config = {
   region: string;
   clientId?: string;
   cognitoDomain?: string;
+  inferenceMode?: "lambda" | "ec2";
 };
 declare global {
   interface Window {

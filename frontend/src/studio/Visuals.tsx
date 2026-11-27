@@ -14,6 +14,7 @@ import {
   CircleHelp,
 } from "lucide-react";
 import { taskById, type TaskId } from "./catalog";
+import { config } from "../api";
 
 export function TaskArt({
   id,
@@ -415,6 +416,8 @@ const serviceDetails: Record<string, string> = {
     "Điểm lưu mô hình, chỉ số, cấu hình tiền xử lý và gói mô hình được lưu theo từng phiên bản.",
   "Lambda dự đoán":
     "Nạp môi trường chạy từ ECR và mô hình từ S3. Mỗi bản triển khai có API dự đoán và khóa riêng.",
+  "EC2 dự đoán":
+    "API Gateway → Lambda chuyển tiếp trong VPC → EC2 chạy mô hình. EC2 nạp môi trường từ ECR, mô hình từ S3 và kiểm tra khóa riêng của từng endpoint.",
 };
 export function Architecture({
   taskId = "image-classification",
@@ -454,7 +457,9 @@ export function Architecture({
       info: `${workers === undefined ? "Nhóm máy xử lý" : workers + " máy xử lý"} · ${instance ? (instance.startsWith("g") ? "GPU" : "CPU") : task.group === "Thị giác máy tính" ? "GPU" : "CPU"}`,
     },
     { name: "S3 · kho mô hình", icon: Boxes, info: "Mô hình + chỉ số" },
-    { name: "Lambda dự đoán", icon: Zap, info: "API dự đoán" },
+    config.inferenceMode === "ec2"
+      ? { name: "EC2 dự đoán", icon: Server, info: "Qua API + Lambda" }
+      : { name: "Lambda dự đoán", icon: Zap, info: "API dự đoán" },
   ];
   return (
     <div className={`st-architecture ${compact ? "compact" : ""}`}>

@@ -596,8 +596,7 @@ function Infrastructure() {
             <div>
               <dt>Triển khai</dt>
               <dd>
-                Ảnh môi trường chạy ở ECR + mô hình ở S3 → Lambda dự đoán → API
-                Gateway.
+                ECR cung cấp môi trường chạy, S3 lưu mô hình. API Gateway → Lambda chuyển tiếp → EC2 dự đoán trong mạng riêng.
               </dd>
             </div>
             <div>
@@ -634,13 +633,19 @@ function Infrastructure() {
             [
               "EC2 Auto Scaling",
               "Co giãn theo SQS",
-              "Từ 0 đến 2 máy m7i-flex.large, mỗi máy 2 vCPU và 8 GB RAM. Thu về 0 khi hàng đợi rỗng đủ 15 phút.",
+              "Từ 0 đến 1 máy m7i-flex.large, 2 vCPU và 8 GB RAM. Thu về 0 khi hàng đợi rỗng đủ 15 phút.",
+              "green",
+            ],
+            [
+              "EC2 dự đoán",
+              "Máy riêng",
+              "Một máy m7i-flex.large, 2 vCPU và 8 GB RAM, duy trì endpoint. Chỉ nhận yêu cầu từ Lambda trong VPC.",
               "green",
             ],
             [
               "Lambda",
               "Đã tạo",
-              "Điều khiển, dự đoán và xử lý hàng đợi lỗi. Mỗi hàm dùng 512 MB RAM theo giới hạn tài khoản.",
+              "Điều khiển, chuyển tiếp yêu cầu dự đoán và xử lý hàng đợi lỗi. Mỗi hàm dùng 512 MB RAM.",
               "green",
             ],
             [

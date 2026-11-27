@@ -35,7 +35,11 @@ export function buildRuntimeConfig(env) {
   if (!/^[a-z0-9]+$/i.test(config.clientId)) {
     throw new Error("STRATUS_COGNITO_CLIENT_ID không hợp lệ.");
   }
-  return { ...config, local: false };
+  const inferenceMode = env.STRATUS_INFERENCE_MODE?.trim();
+  if (inferenceMode && !["lambda", "ec2"].includes(inferenceMode)) {
+    throw new Error("STRATUS_INFERENCE_MODE phải là lambda hoặc ec2.");
+  }
+  return { ...config, ...(inferenceMode ? { inferenceMode } : {}), local: false };
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

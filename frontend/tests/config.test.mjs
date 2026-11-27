@@ -9,8 +9,12 @@ const env = {
   STRATUS_COGNITO_DOMAIN: "https://example.auth.ap-southeast-2.amazoncognito.com/",
 };
 
-test("Local build without AWS configuration retains the development config", () => {
+test("Build without overrides retains the checked-in public config", () => {
   assert.equal(buildRuntimeConfig({}), null);
+});
+test("Cloud build can describe EC2 inference and rejects invalid modes", () => {
+  assert.equal(buildRuntimeConfig({ ...env, STRATUS_INFERENCE_MODE: "ec2" }).inferenceMode, "ec2");
+  assert.throws(() => buildRuntimeConfig({ ...env, STRATUS_INFERENCE_MODE: "public" }));
 });
 test("Cloud build preserves the API stage and includes only public settings", () => {
   assert.deepEqual(buildRuntimeConfig({ ...env, AWS_SECRET_ACCESS_KEY: "never-export" }), {

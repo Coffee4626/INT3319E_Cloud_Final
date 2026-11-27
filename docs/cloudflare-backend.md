@@ -5,47 +5,31 @@ URL production: **https://int3319e-cloud-final.binhyb2.workers.dev**.
 Cloudflare phục vụ React và các tệp tĩnh; API, huấn luyện và dự đoán chạy trên AWS.
 Không cần CloudFront cho phương án này.
 
-Đã kiểm tra URL này ngày 27/11/2026: `/app` và `/auth/callback` trả HTTP 200;
-`/config.js` vẫn là cấu hình mặc định, chưa chứa API Gateway và Cognito.
-Vì vậy frontend đã được phục vụ nhưng chưa kết nối backend AWS.
+Backend đã triển khai trong account **866160682379**, region **ap-southeast-2**.
+API Gateway: `https://dhajsrfama.execute-api.ap-southeast-2.amazonaws.com/prod`.
+Cognito pool: `ap-southeast-2_a0gSirlAO`. Xem bằng chứng kiểm thử và giới hạn tại
+[deployment-status.md](deployment-status.md). Tài khoản cũ và case Support được lưu riêng
+trong [deployment-previous-account.md](deployment-previous-account.md).
 
-## Hiện có thể dùng gì?
-
-| Chức năng | Trên máy qua Docker | Trên AWS |
-| --- | --- | --- |
-| Chọn bài toán, cấu hình mô hình, xem kiến trúc | Có | Frontend có thể phục vụ trên Cloudflare |
-| CSV → tiền xử lý → LightGBM phân loại/hồi quy → đánh giá → dự đoán | Đã kiểm thử toàn luồng | Chưa hoạt động vì API/Lambda chưa bật và EC2 quota bằng 0 |
-| S3, DynamoDB, SQS, ECR, ASG | LocalStack cho các dịch vụ dữ liệu | Đã tạo tài nguyên; ASG 0 máy |
-| EC2 tự tăng/giảm theo hàng đợi | Không; Docker worker chạy cố định | Có cấu hình, chưa kiểm thử được chu kỳ 0 → N → 0 |
-| Số máy EC2/CPU/GPU trực tiếp trên dashboard | Chưa có nguồn giám sát | Chưa nối API giám sát |
-| Phân loại ảnh, phát hiện đối tượng, hai loại phân đoạn ảnh, phân loại văn bản, dự báo | Có giao diện cấu hình và kiểm tra định dạng | Chưa có bộ xử lý huấn luyện/dự đoán; mở quota không tự bổ sung chức năng này |
-| XGBoost, Random Forest và các mô hình khác ngoài LightGBM | Chưa hỗ trợ huấn luyện từ giao diện | Chưa hỗ trợ |
-
-Ngày 27/11/2026 đã kiểm tra lại account `080665850368`, region `ap-southeast-2`:
-Lambda `GetAccountSettings` vẫn trả `AccessDeniedException`; EC2 Standard quota là **0 vCPU**;
-stack `stratus-automl` ở `UPDATE_COMPLETE` với `EnableApi=false`;
-ASG có Min=0, Desired=0, Max=2 và không có instance.
-
-## 1. Gỡ hai chặn AWS
-
-Theo dõi case **179576527600876** trong AWS Support và hoàn thành bước xác minh mà AWS yêu cầu.
-Cần AWS cho phép Lambda hoạt động và nâng quota EC2 Standard On-Demand đủ cho hai `t3.large`
-(tổng 4 vCPU; mức yêu cầu cụ thể theo AWS chấp nhận). Không cần mở CloudFront để dùng Cloudflare.
-
-Đăng nhập CLI và kiểm tra lại:
+## 1. Đăng nhập AWS để cập nhật
 
 ```bash
-aws login --profile stratus-deploy --region ap-southeast-2
-export AWS_PROFILE=stratus-deploy
+aws login --profile stratus-new --region ap-southeast-2
+export AWS_PROFILE=stratus-new
 export AWS_DEFAULT_REGION=ap-southeast-2
 export STACK_NAME=stratus-automl
-export WORKER_INSTANCE_TYPE=t3.large
-export MAX_WORKERS=2
+export WORKER_INSTANCE_TYPE=m7i-flex.large
+export MAX_WORKERS=1
+export CONTROL_MEMORY_MB=512
+export PREDICT_MEMORY_MB=512
+export INFERENCE_MODE=ec2
+export INFERENCE_INSTANCE_TYPE=m7i-flex.large
 python3 scripts/check_aws.py
 ```
 
-Chỉ chạy tiếp khi Lambda truy cập được và quota đủ. Kiểm tra này không chứng minh toàn bộ quyền
-triển khai đã đủ; kết quả deploy và thử thực tế mới xác nhận được.
+Tài khoản mới có EC2 Standard quota 5 vCPU; một worker và một máy inference dùng tổng 4 vCPU.
+Lambda hiện chỉ cho phép tối đa 512 MB mỗi function. Inference chạy trên EC2 riêng; Lambda chỉ chuyển tiếp request. Kiểm tra quota không thay thế
+việc thử upload, train và inference thực tế.
 
 ## 2. Deploy backend theo đúng domain Cloudflare
 
@@ -70,7 +54,7 @@ Các giá trị mà template sẽ thiết lập khi deploy backend:
 | Cognito callback | `https://int3319e-cloud-final.binhyb2.workers.dev/auth/callback` |
 | Cognito logout | `https://int3319e-cloud-final.binhyb2.workers.dev` |
 
-Đây là cấu hình cho lần deploy tiếp theo; stack AWS chưa được cập nhật vì Lambda và quota EC2 còn bị chặn.
+Các giá trị này đã được áp dụng trên stack AWS mới.
 
 Lấy cấu hình public sau khi stack hoàn tất:
 
@@ -90,7 +74,7 @@ Mở Worker **int3319e-cloud-final → Settings → Build**:
 | Build command | `npm run build` |
 | Deploy command | `npx wrangler deploy` |
 
-Trong **Build variables and secrets**, đặt đủ bốn biến dưới đây. Đây là thông tin public,
+Repository đã có cấu hình production trong `frontend/public/config.js`; build từ nhánh `main` dùng ngay cấu hình này. Localhost vẫn kết nối `/api` local. Khi chuyển sang stack/domain khác, có thể cập nhật tệp đó hoặc đặt đủ bốn biến dưới đây trong **Build variables and secrets**. Đây là thông tin public,
 không phải AWS access key hoặc mật khẩu. Biến runtime ở mục Variables & Secrets riêng
 không tự đi vào bản React tĩnh.
 
@@ -100,10 +84,10 @@ không tự đi vào bản React tĩnh.
 | `STRATUS_AWS_REGION` | `ap-southeast-2` |
 | `STRATUS_COGNITO_CLIENT_ID` | Output `UserPoolClientId` |
 | `STRATUS_COGNITO_DOMAIN` | Output `CognitoDomain`, không thêm `/login` |
+| `STRATUS_INFERENCE_MODE` | `ec2` cho deployment này; tùy chọn, dùng để hiển thị kiến trúc |
 
 Chạy build/deploy lại sau khi lưu biến. `npm run build` sinh `dist/config.js` với `local:false`.
-Nếu thiếu một phần cấu hình, build báo lỗi; nếu chưa đặt biến nào, giao diện vẫn mở được nhưng
-chỉ localhost mới bật kết nối phát triển. Cấu hình SPA trong `frontend/wrangler.jsonc` hỗ trợ
+Nếu thiếu một phần cấu hình, build báo lỗi; nếu chưa đặt biến nào, build giữ nguyên cấu hình trong `public/config.js`. Cấu hình SPA trong `frontend/wrangler.jsonc` hỗ trợ
 truy cập trực tiếp `/app/...` và `/auth/callback`.
 
 `/api` trong cấu hình phát triển được proxy bởi Nginx/Vite trên máy. Cloudflare static assets
@@ -112,12 +96,11 @@ Không đưa AWS credentials hay khóa dự đoán vào các biến build.
 
 Nếu dùng một hệ thống build khác hoặc upload tệp đã build, script AWS cũng tạo sẵn
 `frontend/dist/config.js`; hãy deploy cả thư mục `dist` sau khi script hoàn tất, không build lại
-thiếu bốn biến trên vì sẽ ghi đè cấu hình này.
+với cấu hình của một stack khác vì sẽ ghi đè cấu hình này.
 
 ## 4. Tạo người dùng và kiểm tra toàn luồng
 
-1. Trong **Cognito → User pools → pool của stack → Users → Create user**, tạo người dùng của bạn.
-   Pool không mở đăng ký công khai. Đăng nhập tại frontend Cloudflare và đổi mật khẩu tạm nếu được yêu cầu.
+1. Tài khoản `ducluu.lqd@gmail.com` đã được tạo và gửi lời mời. Mở frontend, đăng nhập bằng mật khẩu tạm trong email, rồi tự đặt mật khẩu mới. Kiểm tra cả thư rác. Pool không mở đăng ký công khai.
 2. Chọn **Phân loại dữ liệu bảng → LightGBM → Dùng dữ liệu mẫu**, chọn cột `churn`, tiền xử lý và huấn luyện.
 3. Kiểm tra tác vụ chuyển `Đang chờ → Đang huấn luyện → Hoàn thành`. EC2 boot và tải image có thể mất vài phút.
 4. Xem chỉ số, đường cong huấn luyện, ma trận nhầm lẫn; bấm **Triển khai mô hình**, lưu khóa API và thử dự đoán.

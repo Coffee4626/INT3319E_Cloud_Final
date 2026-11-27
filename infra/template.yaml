@@ -51,9 +51,18 @@ Parameters:
     MinValue: 128
     MaxValue: 10240
     Description: Inference Lambda memory; fit this to the account quota and model size
+  InferenceMode:
+    Type: String
+    Default: lambda
+    AllowedValues: [lambda, ec2]
+    Description: Run models inside Lambda or on private EC2 behind the same API
+  InferenceInstanceType:
+    Type: String
+    Default: m7i-flex.large
 Conditions:
   ApiEnabled: !Equals [!Ref EnableApi, 'true']
   HasBudgetEmail: !Not [!Equals [!Ref BudgetEmail, '']]
+  Ec2Inference: !And [!Equals [!Ref EnableApi, 'true'], !Equals [!Ref InferenceMode, ec2]]
 Globals:
   Function:
     Architectures: [x86_64]
@@ -283,6 +292,14 @@ Resources:
       ImageConfig: {Command: [app.predict.handler]}
       MemorySize: !Ref PredictMemoryMB
       EphemeralStorage: {Size: 2048}
+      VpcConfig: !If
+        - Ec2Inference
+        - SecurityGroupIds: [!Ref InferenceProxySecurityGroup]
+          SubnetIds: !Ref SubnetIds
+        - !Ref AWS::NoValue
+      Environment:
+        Variables:
+          INFERENCE_URL: !If [Ec2Inference, !Sub 'http://${InferenceInstance.PrivateIp}:8080', '']
       Policies:
         - Statement:
             - Effect: Allow
@@ -340,6 +357,138 @@ Resources:
     Type: AWS::Logs::LogGroup
     Properties:
       RetentionInDays: 7
+  InferenceLogs:
+    Condition: Ec2Inference
+    Type: AWS::Logs::LogGroup
+    Properties:
+      RetentionInDays: 7
+  InferenceProxySecurityGroup:
+    Condition: Ec2Inference
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Lambda proxy - private inference egress only
+      VpcId: !Ref VpcId
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 8080
+          ToPort: 8080
+          DestinationSecurityGroupId: !Ref InferenceSecurityGroup
+  InferenceSecurityGroup:
+    Condition: Ec2Inference
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Private inference - no public inbound or SSH
+      VpcId: !Ref VpcId
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+  InferenceIngress:
+    Condition: Ec2Inference
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref InferenceSecurityGroup
+      SourceSecurityGroupId: !Ref InferenceProxySecurityGroup
+      IpProtocol: tcp
+      FromPort: 8080
+      ToPort: 8080
+  InferenceRole:
+    Condition: Ec2Inference
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: {Service: ec2.amazonaws.com}
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: inference
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: s3:GetObject
+                Resource: !Sub '${DataBucket.Arn}/models/*'
+              - Effect: Allow
+                Action: dynamodb:GetItem
+                Resource: !GetAtt StateTable.Arn
+              - Effect: Allow
+                Action: ecr:GetAuthorizationToken
+                Resource: '*'
+              - Effect: Allow
+                Action: [ecr:BatchGetImage, ecr:GetDownloadUrlForLayer, ecr:BatchCheckLayerAvailability]
+                Resource: !Sub 'arn:${AWS::Partition}:ecr:${AWS::Region}:${AWS::AccountId}:repository/*'
+              - Effect: Allow
+                Action: [logs:CreateLogStream, logs:PutLogEvents]
+                Resource: !GetAtt InferenceLogs.Arn
+              - Effect: Allow
+                Action: cloudformation:SignalResource
+                Resource: !Ref AWS::StackId
+  InferenceProfile:
+    Condition: Ec2Inference
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles: [!Ref InferenceRole]
+  InferenceLaunchTemplate:
+    Condition: Ec2Inference
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateData:
+        ImageId: !Ref WorkerAmi
+        InstanceType: !Ref InferenceInstanceType
+        IamInstanceProfile: {Arn: !GetAtt InferenceProfile.Arn}
+        MetadataOptions:
+          HttpTokens: required
+          HttpPutResponseHopLimit: 2
+        BlockDeviceMappings:
+          - DeviceName: /dev/xvda
+            Ebs: {VolumeSize: 30, VolumeType: gp3, Encrypted: true, DeleteOnTermination: true}
+        NetworkInterfaces:
+          - DeviceIndex: 0
+            AssociatePublicIpAddress: true
+            SubnetId: !Select [0, !Ref SubnetIds]
+            Groups: [!Ref InferenceSecurityGroup]
+        UserData:
+          Fn::Base64: !Sub |
+            #!/bin/bash
+            set -euo pipefail
+            dnf install -y docker
+            systemctl enable --now docker
+            TOKEN=$(curl -fsS -X PUT -H 'X-aws-ec2-metadata-token-ttl-seconds: 21600' http://169.254.169.254/latest/api/token)
+            INSTANCE_ID=$(curl -fsS -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/instance-id)
+            aws ecr get-login-password --region ${AWS::Region} | docker login --username AWS --password-stdin ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com
+            docker pull ${ImageUri}
+            docker run -d --name automl-inference --restart always -p 8080:8080 \
+              --log-driver awslogs --log-opt awslogs-region=${AWS::Region} \
+              --log-opt awslogs-group=${InferenceLogs} \
+              -e AWS_DEFAULT_REGION=${AWS::Region} \
+              -e BUCKET_NAME=${DataBucket} -e TABLE_NAME=${StateTable} \
+              -e ALLOWED_ORIGIN=${AllowedOrigin} -e MODEL_IMAGE_URI=${ImageUri} \
+              -e OMP_NUM_THREADS=2 -e OPENBLAS_NUM_THREADS=2 \
+              --entrypoint python ${ImageUri} -m app.inference_server
+            for attempt in $(seq 1 120); do
+              if curl -fsS http://127.0.0.1:8080/health >/dev/null; then
+                aws cloudformation signal-resource --region ${AWS::Region} --stack-name ${AWS::StackName} --logical-resource-id InferenceInstance --unique-id "$INSTANCE_ID" --status SUCCESS
+                exit 0
+              fi
+              sleep 5
+            done
+            aws cloudformation signal-resource --region ${AWS::Region} --stack-name ${AWS::StackName} --logical-resource-id InferenceInstance --unique-id "$INSTANCE_ID" --status FAILURE
+            exit 1
+  InferenceInstance:
+    Condition: Ec2Inference
+    Type: AWS::EC2::Instance
+    CreationPolicy:
+      ResourceSignal: {Count: 1, Timeout: PT15M}
+    Properties:
+      # Referencing the version forces replacement when the runtime image changes.
+      LaunchTemplate:
+        LaunchTemplateId: !Ref InferenceLaunchTemplate
+        Version: !GetAtt InferenceLaunchTemplate.LatestVersionNumber
+      Tags:
+        - {Key: Name, Value: !Sub '${AWS::StackName}-inference'}
   WorkerRole:
     Type: AWS::IAM::Role
     Properties:
@@ -545,6 +694,14 @@ Resources:
       ComparisonOperator: GreaterThanOrEqualToThreshold
       TreatMissingData: notBreaching
 Outputs:
+  InferenceMode:
+    Value: !Ref InferenceMode
+  InferenceInstanceId:
+    Condition: Ec2Inference
+    Value: !Ref InferenceInstance
+  InferenceLogGroup:
+    Condition: Ec2Inference
+    Value: !Ref InferenceLogs
   ApiUrl:
     Condition: ApiEnabled
     Value: !Sub 'https://${Api}.execute-api.${AWS::Region}.amazonaws.com/prod'

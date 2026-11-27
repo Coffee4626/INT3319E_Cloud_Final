@@ -79,12 +79,19 @@ if __name__ == "__main__":
         print(task, "test evaluation:", evaluation["scores"], flush=True)
         deployment = request("/deploy", {"job_id": job_id})
         payload = {"rows": [{"x": 12}, {"x": 195}]}
+        first_started = time.monotonic()
         result = request(deployment["predict_path"], payload, key=deployment["api_key"])
+        first_ms = round((time.monotonic() - first_started) * 1000)
         assert len(result["predictions"]) == 2, result
         if task == "classification":
             assert all(value in ("low", "high") for value in result["predictions"]), result
         else:
             assert all(isinstance(value, (int, float)) for value in result["predictions"]), result
+        warm_started = time.monotonic()
+        warm = request(deployment["predict_path"], payload, key=deployment["api_key"])
+        warm_ms = round((time.monotonic() - warm_started) * 1000)
+        assert warm == result, (warm, result)
+        print(task, "inference first/warm:", first_ms, warm_ms, "ms", flush=True)
         try:
             request(deployment["predict_path"], payload, key="not-a-valid-key")
         except RuntimeError as exc:

@@ -11,5 +11,6 @@ args = parser.parse_args()
 stack = json.load(sys.stdin)["Stacks"][0]
 outputs = {entry["OutputKey"]: entry["OutputValue"] for entry in stack["Outputs"]}
 config = {"apiUrl": outputs["ApiUrl"], "clientId": outputs["UserPoolClientId"],
-          "cognitoDomain": outputs["CognitoDomain"], "region": args.region, "local": False}
+          "cognitoDomain": outputs["CognitoDomain"], "region": args.region, "local": False,
+          "inferenceMode": outputs.get("InferenceMode", "lambda")}
 Path(args.output).write_text("window.STRATUS_CONFIG = " + json.dumps(config) + ";\n")

@@ -2,7 +2,7 @@
 
 ```mermaid
 flowchart LR
-  User[Người dùng] --> Web[React / CloudFront / private S3]
+  User[Người dùng] --> Web[React / Cloudflare]
   Web --> Auth[Cognito Hosted UI + PKCE]
   Web --> API[API Gateway REST]
   API --> Controller[Lambda controller]
@@ -17,7 +17,8 @@ flowchart LR
   Train --> Models[(S3 model artifacts)]
   Train --> DB
   Client[Ứng dụng khách] -->|X-Api-Key| API
-  API --> Predict[Lambda predict + model cache]
+  API --> Proxy[Lambda proxy trong VPC]
+  Proxy --> Predict[EC2 inference + model cache]
   Models --> Predict
   DB --> Predict
   ECR[ECR immutable image digest] --> ASG
@@ -31,6 +32,7 @@ flowchart LR
 ## Các lớp
 
 - `controller.py` / `predict.py`: Lambda proxy HTTP; validation body, auth, status mapping, CORS.
+- `inference_proxy.py` / `inference_server.py`: chuyển tiếp tới private EC2; health check, giới hạn body và khóa xử lý cache.
 - `http.owner`: chỉ lấy owner từ authorizer claims; AWS fail closed nếu không có Cognito identity.
 - `DatasetService`: ticket upload, profile CSV, immutable snapshots, deterministic preprocessing.
 - `JobService`: owner checks, submit, listing, cancellation/retry, deployment, revoke/rotate.
@@ -94,9 +96,19 @@ Dockerfile dựa trên Lambda Python 3.12, import-check AutoGluon khi build. EC2
 `python -m app.worker`; Lambda giữ Runtime Interface Client từ base image.
 
 Model artifact ở S3, deployment chỉ ánh xạ model + task + runtime digest + hash key trong DynamoDB.
-Không build image per-model. Lambda tải ZIP từ prefix tin cậy, kiểm tra path traversal/symlink/giới hạn
+Không build image per-model. Runtime inference tải ZIP từ prefix tin cậy, kiểm tra path traversal/symlink/giới hạn
 uncompressed, load AutoGluon cùng phiên bản rồi cache một model trên warm instance trong `/tmp`.
 Không nhận model artifact từ người dùng vì AutoGluon loader sử dụng pickle.
+
+Production đặt `INFERENCE_MODE=ec2`: Lambda chỉ chuyển tiếp request đến private IP trên cổng 8080;
+EC2 chạy `python -m app.inference_server`, nạp dependency trước khi health check báo sẵn sàng.
+Security group chỉ nhận từ Lambda; key vẫn được kiểm tra bởi `PredictionService` trên EC2.
+Một request mỗi lần bảo vệ model cache; request đồng thời trả 429. Proxy lỗi kết nối/timeout trả 503.
+Máy inference 2 vCPU/8 GiB duy trì endpoint ngay cả khi worker train về 0. Worker train tối đa 1 máy
+trong quota 5 vCPU. Bản này có một máy inference, chưa có HA/cân bằng tải.
+
+Template vẫn hỗ trợ `INFERENCE_MODE=lambda` khi account có quota phù hợp. EC2 inference dùng
+launch-template version; đổi image bắt buộc thay instance, tránh máy giữ runtime cũ.
 
 Model và runtime digest khác nhau bị từ chối. Đổi runtime cần train/deploy lại; phục vụ nhiều runtime
 đồng thời cần nhiều stack/version (ngoài luồng đơn giản hiện tại).
@@ -115,7 +127,7 @@ Cognito + API authorizer bảo vệ quản trị; deployment token ngẫu nhiên
 Stored SHA-256, constant-time compare, rotation/revocation. Cognito pool admin-only, API Gateway throttle
 best effort. CORS chỉ cấu hình origin frontend nhưng CORS không thay thế authentication.
 
-S3 private, CloudFront OAC, HTTPS policies, SQS/EBS encryption, IMDSv2, roles riêng. Chi phí còn tồn tại
+S3 private, Cloudflare HTTPS (hoặc CloudFront OAC khi chọn hosting đó), HTTPS policies, SQS/EBS encryption, IMDSv2, roles riêng. Chi phí còn tồn tại
 khi ASG=0. Không claim hệ thống đã load-test hay production-hardened; cần đo memory/latency/cost/quota trên
 AWS account thật trước rollout cho lượng truy cập lớn.
 

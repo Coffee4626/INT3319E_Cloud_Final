@@ -5,7 +5,7 @@ Trạng thái account/tài nguyên hiện tại và bước chạy tiếp: [depl
 ## 1. Chuẩn bị tài khoản và máy deploy
 
 Dùng một AWS account sandbox cho môn học, bật MFA cho tài khoản quản trị. Có thể chọn **us-east-1** theo sơ đồ.
-Project trong phiên triển khai này được AWS ấn định **ap-southeast-2 (Sydney)**; phải dùng region này.
+Bản production hiện tại dùng account **866160682379**, region **ap-southeast-2 (Sydney)**. Khi cập nhật bản này, giữ nguyên region và stack.
 Máy cần AWS CLI v2, Docker Desktop/Engine + Buildx, Node.js 22+, npm, Python 3.10+ và Git.
 Nếu dùng AWS Academy/Learner Lab, kiểm tra trước: một số lab không cho tạo IAM roles, Cognito,
 Budgets hoặc CloudFront. Template hiện tạo roles riêng; account phải cho phép các dịch vụ đó.
@@ -17,7 +17,7 @@ không đưa AWS secret vào frontend, Git hay `/config.js`.
 aws configure sso
 aws sso login --profile your-profile
 export AWS_PROFILE=your-profile
-export AWS_DEFAULT_REGION=us-east-1
+export AWS_DEFAULT_REGION=ap-southeast-2
 aws sts get-caller-identity
 ```
 
@@ -67,8 +67,14 @@ kể cả DLQ consumer; không gửi production jobs trong trạng thái này. Q
 
 ```bash
 export STACK_NAME=stratus-automl       # 3–30 ký tự thường/số/dấu -, bắt đầu bằng chữ
-export MAX_WORKERS=2                  # 1–10, mặc định 2
-export WORKER_INSTANCE_TYPE=t3.large  # x86_64, mặc định 2 vCPU / 8 GiB
+export MAX_WORKERS=1                  # 1–10, mặc định 2
+export WORKER_INSTANCE_TYPE=m7i-flex.large  # x86_64, 2 vCPU / 8 GiB
+export FRONTEND_ORIGIN=https://int3319e-cloud-final.binhyb2.workers.dev
+# Giới hạn Lambda đã quan sát trên account mới; tăng nếu AWS cho phép:
+export CONTROL_MEMORY_MB=512
+export PREDICT_MEMORY_MB=512
+export INFERENCE_MODE=ec2
+export INFERENCE_INSTANCE_TYPE=m7i-flex.large
 # Tùy chọn, gửi email khi chi phí account đạt 80% ngân sách 10 USD/tháng:
 export BUDGET_EMAIL=you@example.com
 bash scripts/deploy.sh
@@ -103,6 +109,26 @@ Metadata bắt buộc IMDSv2, hop limit 2 cho Docker. Không tạo NAT Gateway �
 Nếu cần private subnet thực sự, phải bổ sung NAT hoặc đủ VPC endpoints và sửa network interface;
 không chỉ thay ID subnet vào template hiện tại.
 
+### Inference trên EC2 riêng
+
+`INFERENCE_MODE=ec2` giữ nguyên route `/predict/{id}` nhưng chuyển việc nạp/chạy model sang một EC2 riêng.
+API Gateway gọi Lambda 512 MB trong VPC; Lambda chỉ gửi HTTP tới private IP của máy inference.
+Security group chỉ cho phép cổng 8080 từ Lambda, không mở SSH hay cổng công khai. Instance role chỉ đọc
+model S3, deployment DynamoDB và image ECR, ghi log/health signal CloudFormation.
+
+Máy **m7i-flex.large, 2 vCPU / 8 GiB**, EBS 30 GB, chạy liên tục để endpoint sẵn sàng. Worker train
+co giãn **0–1**, EBS 50 GB/worker; tổng tối đa 4 vCPU trong quota 5 vCPU của account này.
+**Scale-to-zero của worker không tắt máy inference**; compute inference vẫn phát sinh phí khi không có job.
+Một máy inference chưa phải cấu hình HA; lỗi máy có thể làm endpoint tạm trả 503.
+
+Image dùng chung train/inference theo digest. Khi đổi image, launch-template version làm CloudFormation
+thay máy inference, đợi health check trước khi nối proxy. Script deploy đưa worker về 0 sau khi xác minh
+queue rỗng để chừa quota cho máy inference cũ và mới trong lúc thay thế. Dừng submit trong toàn bộ lần deploy.
+
+Mỗi request tối đa 100 rows / 1 MB, proxy timeout 25 giây. Server xử lý một request mỗi lần; request đồng thời
+trả 429 để client thử lại, tránh hai model thay cache cùng lúc. Nếu quota Lambda được tăng, có thể chọn
+`INFERENCE_MODE=lambda` và tăng `PREDICT_MEMORY_MB`; đây là thay đổi hạ tầng, cần kiểm thử lại latency/model.
+
 ## 3. Tạo tài khoản đăng nhập
 
 User pool mặc định chỉ cho admin tạo tài khoản, không mở self-signup công khai.
@@ -120,7 +146,7 @@ aws cognito-idp admin-create-user --user-pool-id "$POOL_ID" \
   --desired-delivery-mediums EMAIL
 ```
 
-Frontend redirect tới `<CloudFront origin>/auth/callback`. Callback/logout URL và CORS được script
+Frontend redirect tới `<FRONTEND_ORIGIN>/auth/callback`. Callback/logout URL và CORS được script
 cấu hình theo đúng origin. API Gateway kiểm tra Cognito ID token, bao gồm audience app client;
 backend lấy `sub` đã xác minh và kiểm tra owner trước khi đọc/ghi từng tài nguyên.
 
@@ -129,7 +155,7 @@ Frontend tự xử lý PKCE, refresh khi token gần hết hạn; không có cli
 
 ## 4. Chạy một thí nghiệm trên AWS
 
-1. Mở URL CloudFront, đăng nhập.
+1. Mở frontend Cloudflare (hoặc CloudFront nếu dùng hosting đó), đăng nhập.
 2. **Thí nghiệm mới → Dùng mẫu** hoặc upload CSV UTF-8 riêng.
 3. Chọn `churn` làm target cho mẫu, kiểm tra feature/duplicate/missing, **Áp dụng & tiếp tục**.
 4. Chọn classification, thời gian 60 giây rồi **Bắt đầu huấn luyện**.
@@ -151,6 +177,8 @@ Mở **EC2 → Auto Scaling Groups → `<stack>-workers`**:
 - Ban đầu `Desired=0`, `Min=0`, `Max=MAX_WORKERS`.
 - Gửi một hoặc nhiều jobs. Alarm `QueueHasWork` theo visible SQS messages sẽ tăng thêm 1 worker,
   cooldown 300 giây, không vượt Max. ASG có thể mất vài phút mới boot và pull xong image.
+  SQS mới hoặc vừa hoạt động lại có thể mất tới 15 phút trước khi CloudWatch nhận metric;
+  lần chạy đầu có thể ở trạng thái chờ lâu hơn. Xem [tài liệu SQS](https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/monitoring-using-cloudwatch.html).
 - Worker xử lý một job mỗi lần; các worker xử lý song song.
 - Khi nhận job, worker tự bật instance scale-in protection, tắt khi xử lý xong.
 - Mỗi 30 giây worker gia hạn lease DynamoDB và visibility SQS.
@@ -169,7 +197,7 @@ có key riêng; worker cũ không được ghi đè trạng thái của worker m
 ## 6. Vận hành và xử lý lỗi
 
 - **CloudWatch Logs**: `/aws/lambda/<Controller>`, `/aws/lambda/<Predict>`, `/aws/lambda/<DlqProcessor>`;
-  log group worker nằm ở output `WorkerLogGroup`.
+  log group worker ở `WorkerLogGroup`, inference EC2 ở `InferenceLogGroup`.
 - **CloudWatch Alarms**: QueueHasWork, QueueIdle, QueueAgeAlarm, PredictErrorsAlarm. Các alarms này
   không gửi email/SNS mặc định; scale alarms có scaling actions. Cảnh báo chi phí là AWS Budgets riêng.
 - **DynamoDB**: bảng pay-per-request, GSI `by-owner`, point-in-time recovery; job có timestamps,
@@ -183,8 +211,8 @@ có key riêng; worker cũ không được ghi đè trạng thái của worker m
 - **401**: hết hạn ID token hoặc sai prediction key. **404**: ID sai hoặc không thuộc user đang đăng nhập.
   **409**: job chưa completed, endpoint đã revoke, hoặc image mismatch. **400**: dữ liệu/config không hợp lệ.
 - **502/504 inference**: xem memory/duration/cold start; thử lại sau cold start, giảm batch/model.
-  Không có guarantee rằng mọi model <1 GB chạy vừa 2 GB RAM trong 28 giây.
-- **403 S3 upload**: kiểm tra URL còn hạn 15 phút, origin đúng CloudFront, file ≤10 MB,
+  Không có guarantee rằng mọi model <1 GB chạy vừa giới hạn RAM trong 28 giây. `PREDICT_MEMORY_MB` mặc định 2048; account hiện tại chỉ cho 512 MB. Bản production đã chuyển compute inference sang EC2 bằng `INFERENCE_MODE=ec2`.
+- **403 S3 upload**: kiểm tra URL còn hạn 15 phút, origin đúng domain frontend, file ≤10 MB,
   content type `text/csv`, giữ nguyên fields của presigned POST.
 - **Cognito redirect_mismatch**: kiểm tra origin và callback `/auth/callback`, không tự thêm trailing slash.
 

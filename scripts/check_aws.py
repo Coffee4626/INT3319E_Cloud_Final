@@ -30,7 +30,12 @@ try:
     kind = os.getenv("WORKER_INSTANCE_TYPE", "t3.large")
     types = aws("ec2", "describe-instance-types", "--instance-types", kind)
     required = types["InstanceTypes"][0]["VCpuInfo"]["DefaultVCpus"] * int(os.getenv("MAX_WORKERS", "2"))
-    print(f"EC2 Standard quota: {quota:g} vCPU; project maximum needs {required} vCPU ({kind})")
+    if os.getenv("INFERENCE_MODE", "lambda") == "ec2":
+        inference_kind = os.getenv("INFERENCE_INSTANCE_TYPE", "m7i-flex.large")
+        inference = aws("ec2", "describe-instance-types", "--instance-types", inference_kind)
+        required += inference["InstanceTypes"][0]["VCpuInfo"]["DefaultVCpus"]
+        print(f"Inference host: {inference_kind}; workers drain before runtime replacement.")
+    print(f"EC2 Standard quota: {quota:g} vCPU; project maximum needs {required} vCPU")
     if quota < required:
         failures.append("EC2 quota is insufficient; resolve through Service Quotas / AWS Support.")
 except (RuntimeError, KeyError, ValueError) as exc:

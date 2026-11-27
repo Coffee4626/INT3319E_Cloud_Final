@@ -4,10 +4,10 @@
 Frontend React + TypeScript, backend Python, hạ tầng AWS khai báo bằng CloudFormation/SAM.
 
 **Trạng thái AWS đã triển khai:** [docs/deployment-status.md](docs/deployment-status.md).
-Storage, SQS, ECR và ASG đã có trên AWS; EC2 quota, Lambda và CloudFront đang chờ AWS Support mở quyền.
+Backend đã được triển khai trong account mới `866160682379`, region Sydney: S3, DynamoDB, SQS, ECR, EC2 Auto Scaling, Lambda, API Gateway và Cognito.
 Frontend đang dùng Cloudflare: xem **[cách nối backend AWS](docs/cloudflare-backend.md)**.
-URL: **https://int3319e-cloud-final.binhyb2.workers.dev** (frontend đã lên, API AWS chưa bật).
-Phương án này không cần CloudFront; vẫn cần gỡ chặn Lambda và quota EC2.
+URL: **https://int3319e-cloud-final.binhyb2.workers.dev**. Cấu hình public đã trỏ tới API/Cognito mới.
+Phương án này không cần CloudFront. Xem trạng thái kiểm thử thực tế trong tài liệu triển khai.
 
 ## Chạy ngay trên máy
 
@@ -51,9 +51,15 @@ Chạy `python3 scripts/check_aws.py` sau khi đăng nhập CLI để kiểm tra
 aws configure sso
 aws sso login --profile your-profile
 export AWS_PROFILE=your-profile
-export AWS_DEFAULT_REGION=us-east-1
+export AWS_DEFAULT_REGION=ap-southeast-2
 export STACK_NAME=stratus-automl
-export MAX_WORKERS=2
+export MAX_WORKERS=1
+export WORKER_INSTANCE_TYPE=m7i-flex.large
+export FRONTEND_ORIGIN=https://int3319e-cloud-final.binhyb2.workers.dev
+export CONTROL_MEMORY_MB=512
+export PREDICT_MEMORY_MB=512
+export INFERENCE_MODE=ec2
+export INFERENCE_INSTANCE_TYPE=m7i-flex.large
 # Không bắt buộc: export BUDGET_EMAIL=you@example.com
 bash scripts/deploy.sh
 ```
@@ -75,7 +81,7 @@ Không cần SAM CLI. AWS tài khoản thật có phát sinh phí; script không
 | Job lifecycle | Theo dõi trạng thái, hủy khi chờ, retry tạo job mới, lease owner, heartbeat, xử lý DLQ |
 | Scaling | EC2 ASG 0–N theo SQS; bảo vệ worker đang train; về 0 sau 15 phút idle |
 | Deployment | Mapping model trong DynamoDB, kiểm tra image digest, key riêng chỉ lưu SHA-256 |
-| Inference | Lambda container từ ECR, tải S3 model, cache warm instance, kiểm tra feature, tối đa 100 rows |
+| Inference | API Gateway → Lambda proxy → EC2 riêng trong VPC; image ECR, model S3, cache, API key; tối đa 100 rows |
 | Playground | Gửi JSON, xem predictions/latency, mẫu cURL, xoay key và thu hồi endpoint |
 | Hạ tầng | IAM roles, private S3 + CloudFront OAC, DynamoDB PITR, encrypted SQS/EBS, CloudWatch, budget tùy chọn |
 | Kiểm thử | Unit/integration Moto, smoke ML thật, TypeScript build, CloudFormation lint, GitHub CI |
@@ -92,6 +98,8 @@ app/
   infrastructure/    S3, SQS, DynamoDB adapters
   predict.py         Inference HTTP handler và xác thực key
   worker.py          SQS polling + instance scale-in protection
+  inference_proxy.py Lambda chuyển tiếp đến EC2 trong VPC
+  inference_server.py HTTP adapter riêng cho inference trên EC2
   dlq.py             Đồng bộ job hết retry sang FAILED
   local.py           HTTP adapter + bootstrap LocalStack
 infra/
@@ -158,9 +166,10 @@ npm run build
 - Model image là runtime dùng chung cho worker và Lambda theo sơ đồ. Artifact model nằm ở S3;
   deploy không build một Docker image riêng cho từng model. Chỉ model từ worker của hệ thống mới được load.
 - `time_limit` 10–600 giây là ngân sách fit của AutoGluon, không phải hard timeout cho toàn bộ job.
-- Lambda inference 28 giây, 2 GB RAM / `/tmp`. Model giới hạn 1 GB uncompressed, nhưng model nhỏ hơn
-  vẫn có thể vượt RAM hoặc cold-start timeout. Khi đó cần giảm dataset/model hoặc dùng endpoint EC2/ECS
-  cho bài toán lớn; endpoint EC2/ECS chưa nằm trong implementation này.
+- Production dùng `INFERENCE_MODE=ec2`: một máy 2 vCPU / 8 GB luôn chạy để phục vụ endpoint; worker train co giãn 0–1.
+  Lambda proxy chờ tối đa 25 giây; model ≤1 GB uncompressed và body dự đoán ≤1 MB.
+  EC2 xử lý một request mỗi lần để bảo vệ cache; request đồng thời trả 429 để client thử lại.
+  Đây là một máy inference, chưa có cân bằng tải/HA. Có thể chọn `INFERENCE_MODE=lambda` khi quota memory/CPU phù hợp.
 - Mỗi process cache một model; luân phiên nhiều deployment gây reload. Không có cam kết latency production.
 - Khi đổi image digest, runtime từ chối model cũ để tránh lệch dependency. Cần retrain/redeploy model;
   dừng submit và đợi queue rỗng trước khi upgrade stack.
