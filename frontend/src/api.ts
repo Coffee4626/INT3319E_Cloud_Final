@@ -289,7 +289,7 @@ export type DeployResult = {
 export type Page<T> = { items: T[]; cursor: string | null };
 export async function upload(file: File, task = "tabular"): Promise<Dataset> {
   const vision = task === "image-classification" || task === "segmentation";
-  if (file.size > (vision ? 50_000_000 : 10_000_000)) throw new Error(vision ? "Dung lượng ZIP tối đa 50 MB." : "Dung lượng CSV tối đa 10 MB.");
+  if (file.size > (vision ? 200_000_000 : 10_000_000)) throw new Error(vision ? "Dung lượng ZIP tối đa 200 MB." : "Dung lượng CSV tối đa 10 MB.");
   if (!file.name.toLowerCase().endsWith(vision ? ".zip" : ".csv"))
     throw new Error(vision ? "Vui lòng chọn file .zip" : "Vui lòng chọn file .csv");
   const ticket = await api<{

@@ -156,7 +156,7 @@ npm run build
 ## Phạm vi và giới hạn
 
 - Giao diện cung cấp phân loại ảnh, phân đoạn ngữ nghĩa, phân loại và hồi quy dữ liệu bảng.
-  [Hướng dẫn ảnh, cấu hình và inference](docs/image-workflows.md). ZIP ảnh tối đa 50 MB.
+  [Hướng dẫn ảnh, cấu hình và inference](docs/image-workflows.md). ZIP ảnh tối đa 200 MB.
   Wizard giữ tệp trên thiết bị: chỉ bấm Bắt đầu huấn luyện mới upload, chuẩn bị dữ liệu và tạo job.
   Biểu đồ hạ tầng mô tả kiến trúc; không tự suy diễn số máy đang chạy từ trạng thái job.
 - CSV UTF-8, tối đa 10 MB / 100.000 rows / 200 cột, header ≤128 ký tự; upload trực tiếp S3.

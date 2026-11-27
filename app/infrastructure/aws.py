@@ -184,7 +184,7 @@ class S3ArtifactStore:
             raise
         try:
             if obj["ContentLength"] > limit:
-                raise ValueError("Image ZIP limit: 50 MB")
+                raise ValueError("Image ZIP limit: 200 MB")
             total = 0
             with path.open("wb") as target:
                 for chunk in obj["Body"].iter_chunks(1024 * 1024):

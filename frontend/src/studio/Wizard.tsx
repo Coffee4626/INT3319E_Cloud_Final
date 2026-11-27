@@ -560,7 +560,7 @@ export function Wizard({
                   <h3>{busy || "Thả bộ dữ liệu của bạn vào đây"}</h3>
                   <p>
                     {task.format} · tối đa{" "}
-                    {task.accept === ".zip" ? "50" : "10"} MB
+                    {task.accept === ".zip" ? "200" : "10"} MB
                   </p>
                   <button
                     className="st-btn secondary"

@@ -85,7 +85,7 @@ Checkpoint có loss `val` thấp nhất được lưu. Loss thật của từng 
 được ghi vào DynamoDB sau khi hoàn tất. **`val` dùng chọn checkpoint; chưa có tập test độc lập cho
 bài toán ảnh.** Đừng hiểu các chỉ số này là kết quả đo trên dữ liệu hoàn toàn chưa dùng chọn model.
 
-ZIP tối đa 50 MB, 5.000 entries, 200 MB giải nén; mỗi tệp tối đa 5 MB, ảnh JPEG/PNG/WebP,
+ZIP tối đa 200 MB, 5.000 entries, 400 MB giải nén; mỗi tệp tối đa 5 MB, ảnh JPEG/PNG/WebP,
 tối đa 16 megapixel/ảnh và 150 megapixel toàn tập. Từ chối path traversal, symlink, tệp trùng,
 ZIP mã hóa, ảnh hỏng, mặt nạ sai kích thước/mã lớp. Resize bộ dữ liệu trước khi upload nếu vượt giới hạn.
 Segmentation hỗ trợ 2–32 lớp. Đây là cấu hình CPU cho dữ liệu nhỏ, không phải cụm GPU phân tán.

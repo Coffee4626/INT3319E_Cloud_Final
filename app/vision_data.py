@@ -9,8 +9,8 @@ from pathlib import PurePosixPath
 from PIL import Image, UnidentifiedImageError
 
 VISION_TASKS = {"image-classification", "segmentation"}
-MAX_ZIP_BYTES = 50_000_000
-MAX_EXPANDED_BYTES = 200_000_000
+MAX_ZIP_BYTES = 200_000_000
+MAX_EXPANDED_BYTES = 400_000_000
 MAX_IMAGE_PIXELS = 16_000_000
 EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 MODELS = {"image-classification": {"mobilenet-v3", "resnet18"},
@@ -77,7 +77,7 @@ def inspect_archive(path, task):
     if task not in VISION_TASKS:
         raise ValueError("Unsupported image task")
     if path.stat().st_size > MAX_ZIP_BYTES:
-        raise ValueError("Image ZIP limit: 50 MB")
+        raise ValueError("Image ZIP limit: 200 MB")
     try:
         return _inspect(path, task)
     except (zipfile.BadZipFile, RuntimeError, OSError, UnicodeError, SyntaxError) as exc:
@@ -88,7 +88,7 @@ def _inspect(path, task):
     with zipfile.ZipFile(path) as archive:
         entries = archive.infolist()
         if len(entries) > 5000 or sum(e.file_size for e in entries) > MAX_EXPANDED_BYTES:
-            raise ValueError("ZIP limit: 5,000 entries and 200 MB after extraction")
+            raise ValueError("ZIP limit: 5,000 entries and 400 MB after extraction")
         names = set()
         for entry in entries:
             p = PurePosixPath(entry.filename)

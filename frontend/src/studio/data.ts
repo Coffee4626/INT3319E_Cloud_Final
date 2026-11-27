@@ -65,8 +65,8 @@ export async function inspectFile(
     throw new Error(
       `Bài toán này cần tệp ${task.accept.toUpperCase()}. ${task.format}.`,
     );
-  if (file.size > (isZip ? 50_000_000 : 10_000_000))
-    throw new Error(`Dung lượng tối đa ${isZip ? "50" : "10"} MB.`);
+  if (file.size > (isZip ? 200_000_000 : 10_000_000))
+    throw new Error(`Dung lượng tối đa ${isZip ? "200" : "10"} MB.`);
   if (!file.size) throw new Error("Tệp đang trống.");
   if (!isZip) {
     const rows = parseCsv((await file.text()).replace(/^\uFEFF/, ""));
