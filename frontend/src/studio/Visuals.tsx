@@ -56,7 +56,7 @@ export function TaskArt({
               <span>
                 <Check size={12} /> Golden Retriever
               </span>
-              <strong>98.6%</strong>
+              <strong>Nhãn ảnh</strong>
             </div>
           )}
           {!plain && id === "object-detection" && (

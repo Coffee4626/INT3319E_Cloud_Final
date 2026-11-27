@@ -305,7 +305,9 @@ const CATALOG: TaskSpec[] = [
     ],
   },
 ];
-export const TASKS = CATALOG.filter((task) => ["image-classification", "segmentation", "classification", "regression"].includes(task.id));
+export const TASKS = CATALOG
+  .filter((task) => ["image-classification", "segmentation", "classification", "regression"].includes(task.id))
+  .map((task) => task.group === "Dữ liệu bảng" ? { ...task, models: task.models.filter((model) => model.id === "lightgbm") } : task);
 export const taskById = (id: string) =>
   TASKS.find((task) => task.id === id) || TASKS[0];
 export const modelById = (task: TaskSpec, id: string) =>

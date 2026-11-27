@@ -359,32 +359,22 @@ function Landing({ go }: { go: (p: string) => void }) {
             </span>
             <span className="st-badge blue">Xem trước</span>
           </div>
-          <TaskArt id="object-detection" />
+          <TaskArt id="segmentation" />
           <div className="st-hero-result">
-            <span>Phát hiện đối tượng</span>
-            <strong>Hiểu những gì trong ảnh.</strong>
+            <span>Phân đoạn ngữ nghĩa</span>
+            <strong>Hiểu từng vùng trong ảnh.</strong>
             <div>
-              <span>3 phương tiện</span>
-              <span>Khung giới hạn</span>
-              <span>Độ tin cậy</span>
+              <span>Bầu trời</span>
+              <span>Tòa nhà</span>
+              <span>Mặt đường</span>
             </div>
           </div>
           <div className="st-floating-metric">
             <Activity size={21} />
             <div>
-              <span>Phát hiện đối tượng</span>
-              <strong>
-                3<small> đối tượng</small>
-              </strong>
+              <span>Kết quả từng điểm ảnh</span>
+              <strong>Mặt nạ PNG</strong>
             </div>
-            <svg viewBox="0 0 110 45">
-              <path
-                d="M3 40L15 32L27 35L40 20L52 24L65 14L77 19L90 6L107 3"
-                fill="none"
-                stroke="#679dff"
-                strokeWidth="2"
-              />
-            </svg>
           </div>
         </div>
       </section>
@@ -697,8 +687,8 @@ function Infrastructure() {
           ))}
         </div>
         <p className="st-muted">
-          Tài nguyên huấn luyện dùng m7i-flex.large. Các tác vụ thị giác máy tính cần môi trường chạy GPU và
-          hạn mức phù hợp trước khi bắt đầu huấn luyện.
+          Huấn luyện và dự đoán ảnh chạy trên CPU m7i-flex.large. Chọn MobileNet, ResNet-18,
+          U-Net hoặc DeepLabV3 MobileNet theo bài toán; không cần GPU cho các mô hình này.
         </p>
       </div>
     </>
