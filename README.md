@@ -6,6 +6,7 @@ Frontend React + TypeScript, backend Python, hạ tầng AWS khai báo bằng Cl
 **Trạng thái AWS đã triển khai:** [docs/deployment-status.md](docs/deployment-status.md).
 Storage, SQS, ECR và ASG đã có trên AWS; EC2 quota, Lambda và CloudFront đang chờ AWS Support mở quyền.
 Frontend đang dùng Cloudflare: xem **[cách nối backend AWS](docs/cloudflare-backend.md)**.
+URL: **https://int3319e-cloud-final.binhyb2.workers.dev** (frontend đã lên, API AWS chưa bật).
 Phương án này không cần CloudFront; vẫn cần gỡ chặn Lambda và quota EC2.
 
 ## Chạy ngay trên máy

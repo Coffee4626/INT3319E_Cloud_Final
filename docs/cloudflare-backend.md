@@ -1,8 +1,13 @@
 # Kết nối frontend Cloudflare với backend AWS
 
 Frontend được triển khai qua **Cloudflare Workers Builds**, Worker `int3319e-cloud-final`.
+URL production: **https://int3319e-cloud-final.binhyb2.workers.dev**.
 Cloudflare phục vụ React và các tệp tĩnh; API, huấn luyện và dự đoán chạy trên AWS.
 Không cần CloudFront cho phương án này.
+
+Đã kiểm tra URL này ngày 27/11/2026: `/app` và `/auth/callback` trả HTTP 200;
+`/config.js` vẫn là cấu hình mặc định, chưa chứa API Gateway và Cognito.
+Vì vậy frontend đã được phục vụ nhưng chưa kết nối backend AWS.
 
 ## Hiện có thể dùng gì?
 
@@ -44,11 +49,11 @@ triển khai đã đủ; kết quả deploy và thử thực tế mới xác nh�
 
 ## 2. Deploy backend theo đúng domain Cloudflare
 
-Thay URL dưới đây bằng **origin production cố định**, không có dấu `/` cuối hoặc đường dẫn con.
+Dùng **origin production cố định** dưới đây, không có dấu `/` cuối hoặc đường dẫn con.
 Không dùng URL preview đổi theo từng commit. Giữ nguyên profile/region/stack ở bước trên.
 
 ```bash
-export FRONTEND_ORIGIN='https://YOUR-FRONTEND.workers.dev'
+export FRONTEND_ORIGIN='https://int3319e-cloud-final.binhyb2.workers.dev'
 ENABLE_API=true bash scripts/deploy.sh
 ```
 
@@ -56,6 +61,16 @@ Khi có `FRONTEND_ORIGIN`, script bỏ qua tạo/publish CloudFront; cập nhậ
 build/push image ECR và tạo API Gateway, Cognito, các Lambda. S3 CORS, API CORS,
 Cognito callback (`<origin>/auth/callback`) và logout đều dùng origin này.
 Script không tự deploy lại Worker Cloudflare và không xóa database.
+
+Các giá trị mà template sẽ thiết lập khi deploy backend:
+
+| Cấu hình | URL |
+| --- | --- |
+| S3/API CORS origin | `https://int3319e-cloud-final.binhyb2.workers.dev` |
+| Cognito callback | `https://int3319e-cloud-final.binhyb2.workers.dev/auth/callback` |
+| Cognito logout | `https://int3319e-cloud-final.binhyb2.workers.dev` |
+
+Đây là cấu hình cho lần deploy tiếp theo; stack AWS chưa được cập nhật vì Lambda và quota EC2 còn bị chặn.
 
 Lấy cấu hình public sau khi stack hoàn tất:
 
