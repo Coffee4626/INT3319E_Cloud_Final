@@ -30,6 +30,7 @@ import {
 } from "../api";
 import { Architecture, DataEvolution, LineChart, TaskArt } from "./Visuals";
 import { TASKS, taskById } from "./catalog";
+import { ForecastInference } from "./ForecastInference";
 import { ImageInference } from "./ImageInference";
 import { ComputePanel } from "./ComputePanel";
 import { formatMetric } from "./metrics";
@@ -37,6 +38,11 @@ import { downloadText } from "./data";
 const metricName = (name?: string) =>
   name
     ? ({
+        outlier_rate: "Tỷ lệ bất thường",
+        mean_anomaly_score: "Điểm bất thường trung bình",
+        silhouette: "Hệ số Silhouette",
+        davies_bouldin: "Chỉ số Davies–Bouldin",
+        smape: "Sai số SMAPE",
         accuracy: "Độ chính xác",
         cross_entropy: "Mất mát cross-entropy",
         pixel_accuracy: "Độ chính xác điểm ảnh",
@@ -558,7 +564,7 @@ export function Experiment({
           <div className="st-eyebrow">THÍ NGHIỆM / {id.slice(0, 8)}</div>
           <h1>{job.name}</h1>
           <p>
-            {taskById(taskId).name}{!vision && ` · Cột mục tiêu: ${job.target}`}
+            {taskById(taskId).name}{!vision && (job.target ? ` · Cột mục tiêu: ${job.target}` : " · Học không giám sát")}
           </p>
         </div>
         <div className="st-actions">
@@ -692,17 +698,25 @@ export function Experiment({
                   </div>
                 )}
               </div>
+              {job.task === "anomaly-detection" && <p className="st-note">Không có nhãn bất thường để tính độ chính xác. Các chỉ số mô tả tỷ lệ và điểm bất thường trên 20% dữ liệu giữ lại.</p>}
+              {job.task === "clustering" && <p className="st-note">Silhouette càng cao và Davies–Bouldin càng thấp cho thấy các cụm tách biệt hơn. Đây là chỉ số nội tại, không phải độ chính xác phân loại.</p>}
+              {job.task === "forecasting" && <p className="st-note">Đánh giá trên đoạn cuối theo thứ tự thời gian. Dự báo đệ quy không sử dụng giá trị thực của đoạn kiểm tra. SMAPE nằm trong khoảng 0–200%, càng thấp càng tốt.</p>}
               <div className="st-chart-grid">
                 <div className="st-panel">
                   <div className="st-panel-head">
-                    <h3>Đường cong huấn luyện</h3>
+                    <h3>{job.task === "forecasting" ? "Dự báo trên đoạn kiểm tra" : "Đường cong huấn luyện"}</h3>
                     <span className="st-muted">
                       {job.metrics?.learning_curve_metric
                         ? metricName(job.metrics.learning_curve_metric)
                         : model?.model}
                     </span>
                   </div>
-                  {points.length ? (
+                  {job.metrics?.forecast_evaluation?.length ? (
+                    <LineChart xLabel="Bước kiểm tra" xValues={job.metrics.forecast_evaluation.map((_,i)=>i+1)} series={[
+                      {name:"Thực tế",color:"#3478f5",values:job.metrics.forecast_evaluation.map(p=>p.actual)},
+                      {name:"Dự báo",color:"#9c6ce0",values:job.metrics.forecast_evaluation.map(p=>p.predicted)},
+                    ]}/>
+                  ) : points.length ? (
                     <LineChart
                       xLabel="Vòng học"
                       xValues={points.map((p) => p.epoch)}
@@ -954,7 +968,7 @@ export function EndpointList({ go }: { go: (p: string) => void }) {
               <code className="st-endpoint-id">
                 {d.deployment_id.slice(0, 16)}
               </code>
-              <p className="st-muted">Cột mục tiêu: {d.target}</p>
+              <p className="st-muted">{d.target ? `Cột mục tiêu: ${d.target}` : "Không cần nhãn mục tiêu"}</p>
               <button
                 className="st-btn full"
                 onClick={() => go("/app/inference/" + d.deployment_id)}
@@ -1058,7 +1072,7 @@ export function Inference({
     parsed.length <= 100 &&
     parsed.every((v) => v && typeof v === "object" && !Array.isArray(v));
   const isVision = deployment?.task === "image-classification" || deployment?.task === "segmentation";
-  const curl = `curl '${endpoint}' \\\n  -H 'Content-Type: application/json' \\\n  -H 'X-Api-Key: YOUR_DEPLOYMENT_KEY' \\\n  --data '${JSON.stringify(isVision ? { image_base64: "BASE64_JPEG_PNG_WEBP" } : { rows: valid ? parsed : [] }).replace(/'/g, "'\\''")}'`;
+  const curl = `curl '${endpoint}' \\\n  -H 'Content-Type: application/json' \\\n  -H 'X-Api-Key: YOUR_DEPLOYMENT_KEY' \\\n  --data '${JSON.stringify(isVision ? { image_base64: "BASE64_JPEG_PNG_WEBP" } : deployment?.task === "forecasting" ? {horizon:7} : { rows: valid ? parsed : [] }).replace(/'/g, "'\\''")}'`;
   async function predict() {
     setBusy("predict");
     setError("");
@@ -1153,7 +1167,7 @@ export function Inference({
       </div>
       <div className="st-playground-toolbar">
         <Status status={deployment.status} />
-        <span className="st-muted">{isVision ? "Ảnh → " + (deployment.task === "segmentation" ? "mặt nạ từng điểm ảnh" : "nhãn và xác suất") : `Cột mục tiêu: ${deployment.target}`}</span>
+        <span className="st-muted">{isVision ? "Ảnh → " + (deployment.task === "segmentation" ? "mặt nạ từng điểm ảnh" : "nhãn và xác suất") : deployment.target ? `Cột mục tiêu: ${deployment.target}` : "Đặc trưng số → kết quả không giám sát"}</span>
       </div>
       <div className="st-panel st-api-key">
         <label>
@@ -1178,7 +1192,7 @@ export function Inference({
           đóng trang.
         </p>
       </div>
-      {isVision ? <ImageInference key={id} id={id} task={deployment.task} apiKey={key} inactive={inactive} /> : (
+      {isVision ? <ImageInference key={id} id={id} task={deployment.task} apiKey={key} inactive={inactive} /> : deployment.task === "forecasting" ? <ForecastInference key={id} id={id} apiKey={key} inactive={inactive}/> : (
       <div className="st-playground-grid">
         <section className="st-panel">
           <div className="st-panel-head">
@@ -1215,7 +1229,7 @@ export function Inference({
                 return (
                   <label key={name}>
                     {name}
-                    {c?.type === "categorical" &&
+                    {deployment.task === "text-classification" && name === "text" ? <textarea rows={5} maxLength={5000} value={fields[name]} onChange={e => {setFields(old=>({...old,[name]:e.target.value}));setResult(null);}}/> : c?.type === "categorical" &&
                     c.unique <= 10 &&
                     c.examples.length > 1 ? (
                       <select
@@ -1329,16 +1343,19 @@ export function Inference({
                     <div key={i}>
                       <span>
                         {result.predictions!.length === 1
-                          ? deployment.target
-                          : `Dòng ${i + 1} · ${deployment.target}`}
+                          ? deployment.target || "Kết quả"
+                          : `Dòng ${i + 1} · ${deployment.target || "kết quả"}`}
                       </span>
                       <strong>
-                        {typeof prediction === "number"
+                        {deployment.task === "anomaly-detection" ? (prediction ? "Bất thường" : "Bình thường") : deployment.task === "clustering" ? `Cụm ${prediction}` : typeof prediction === "number"
                           ? new Intl.NumberFormat("vi-VN", {
                               maximumFractionDigits: 4,
                             }).format(prediction)
                           : String(prediction)}
                       </strong>
+                      {deployment.task === "anomaly-detection" && <small>Điểm: {(result.anomalies as {score:number}[])?.[i]?.score.toFixed(4)} · lớn hơn 0 là bất thường</small>}
+                      {deployment.task === "clustering" && <small>Khoảng cách đến tâm: {(result.clusters as {distance:number}[])?.[i]?.distance.toFixed(4)}</small>}
+                      {deployment.task === "text-classification" && <small>{Object.entries((result.probabilities as Record<string,number>[])?.[i] || {}).map(([label,p])=>`${label}: ${(p*100).toFixed(1)}%`).join(" · ")}</small>}
                     </div>
                   ))}
                 </div>

@@ -85,12 +85,14 @@ def profile_file(path):
     return profiler.result(Path(path).stat().st_size)
 
 
-def prepare_file(source, destination, options):
+def prepare_file(source, destination, options, task="tabular"):
+    from app.task_options import UNSUPERVISED
+    unsupervised = task in UNSUPERVISED
     data = rows(source)
     columns = next(data)
     target = options.get('target')
     drops = options.get('drop_columns', [])
-    if target not in columns:
+    if not unsupervised and target not in columns:
         raise ValueError('Choose a target column')
     if not isinstance(drops, list) or any(not isinstance(c, str) or c not in columns for c in drops):
         raise ValueError('drop_columns must contain existing column names')
@@ -101,7 +103,7 @@ def prepare_file(source, destination, options):
             raise ValueError(f'{key} must be a boolean')
     keep = [i for i, c in enumerate(columns) if c not in drops]
     out_columns = [columns[i] for i in keep]
-    target_index = out_columns.index(target)
+    target_index = None if unsupervised else out_columns.index(target)
     profiler = Profiler(out_columns)
     report = dict(input_rows=0, output_rows=0, dropped_columns=drops)
     seen = set()
@@ -112,7 +114,7 @@ def prepare_file(source, destination, options):
             report['input_rows'] += 1
             row = [original[i].strip() if options.get('trim_strings', True) else original[i] for i in keep]
             row = ['' if missing(v) else v for v in row]
-            if not row[target_index] and options.get('drop_missing_target', True):
+            if target_index is not None and not row[target_index] and options.get('drop_missing_target', True):
                 report['removed_missing_target'] = report.get('removed_missing_target', 0) + 1
                 continue
             key = signature(row)

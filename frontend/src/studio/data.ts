@@ -70,7 +70,7 @@ export async function inspectFile(
     throw new Error("Dung lượng tối đa 200 MB.");
   if (!file.size) throw new Error("Tệp đang trống.");
   if (!isZip) {
-    let columns: string[] = [], count = 0, lastTime = -Infinity;
+    let columns: string[] = [], count = 0, lastTime = -Infinity, interval: number | undefined;
     const preview: string[][] = [];
     await scanCsv(file, row => {
       if (!columns.length) {
@@ -78,7 +78,7 @@ export async function inspectFile(
         if (columns.length < 2 || new Set(columns).size !== columns.length || columns.some(c => !c))
           throw new Error("CSV cần ít nhất 2 cột với tên cột không trùng.");
         const required = task.id === "text-classification" ? ["text", "label"] : task.id === "forecasting" ? ["timestamp", "target"] : [];
-        if (required.some(c => !columns.includes(c))) throw new Error(`CSV phải có các cột: ${required.join(", ")}.`);
+        if (required.length && (columns.length !== 2 || required.some(c => !columns.includes(c)))) throw new Error(`CSV phải có các cột: ${required.join(", ")}.`);
         return;
       }
       if (row.length !== columns.length) throw new Error("Số ô trong các dòng CSV không khớp tên cột.");
@@ -87,11 +87,17 @@ export async function inspectFile(
         const value = row[columns.indexOf("target")];
         if (!Number.isFinite(time) || time <= lastTime || !value.trim() || !Number.isFinite(Number(value)))
           throw new Error("Cột timestamp phải tăng dần; target phải là số.");
+        if (lastTime !== -Infinity) {
+          if (interval !== undefined && time-lastTime !== interval) throw new Error("Khoảng thời gian giữa các quan sát phải đều nhau.");
+          interval = time-lastTime;
+        }
         lastTime = time;
       }
+      if (task.id === "text-classification" && (!row[columns.indexOf("text")].trim() || row[columns.indexOf("text")].length > 5000)) throw new Error("Văn bản phải có từ 1 đến 5.000 ký tự mỗi dòng.");
       if (++count > 100000) throw new Error("CSV tối đa 100.000 dòng.");
       if (preview.length < 5) preview.push(row.map(c => c.slice(0, 64)));
     });
+    if (["anomaly-detection", "clustering", "text-classification", "forecasting"].includes(task.id) && (count < 30 || count > 20000)) throw new Error("Bài toán này cần 30–20.000 dòng dữ liệu.");
     if (count < 2) throw new Error("CSV cần ít nhất 2 dòng dữ liệu.");
     return { name: file.name, count, classes: 0, columns, files: [], size: file.size, sample: false, preview };
   }

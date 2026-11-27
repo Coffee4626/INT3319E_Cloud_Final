@@ -1,4 +1,4 @@
-# Trạng thái triển khai thực tế — 27/11/2026
+# Trạng thái triển khai thực tế — 28/11/2026
 
 Bản production dùng account **866160682379**, IAM deploy `luusayhello`, region **ap-southeast-2 (Sydney)**.
 Tài khoản cũ `080665850368` và các hạn chế/support case của nó được lưu tại
@@ -16,7 +16,7 @@ Tài khoản cũ `080665850368` và các hạn chế/support case của nó đư
 | --- | --- | --- |
 | `stratus-automl-network` | CREATE_COMPLETE | VPC, hai public subnet, Internet Gateway, routes |
 | `stratus-automl-registry` | CREATE_COMPLETE | ECR runtime AutoGluon/LightGBM + PyTorch CPU amd64 |
-| `stratus-automl` | UPDATE_COMPLETE | S3, DynamoDB/GSI/PITR, SQS/DLQ, ASG, IAM, CloudWatch, API Gateway, Cognito, ba Lambda |
+| `stratus-automl` | UPDATE_COMPLETE | S3, DynamoDB/GSI/PITR, SQS/DLQ, ASG, IAM, CloudWatch, API Gateway, Cognito, các Lambda quản trị/dự đoán/giám sát/vòng đời |
 
 Không tạo CloudFront; frontend được Cloudflare phục vụ. Budget email chưa được cấu hình.
 
@@ -31,21 +31,21 @@ Không tạo CloudFront; frontend được Cloudflare phục vụ. Budget email 
 | ECR | `stratus-automl-registry-registry-ahcflaooa3yl` |
 | ASG | `stratus-automl-workers` |
 | Worker logs | `stratus-automl-WorkerLogs-mKkV8RjfFPUa` |
-| Inference instance | `i-0fc79d59ea5b6ea40` |
+| Inference instance | `i-03315194a6f43119e` |
 | Inference logs | `stratus-automl-InferenceLogs-St4PnloVNzIT` |
 | Runtime digest | `sha256:f1fa95a7e8e8856f16f53fde5d4f23ff92477b9502d01b8673cf755dde16f860` |
 
 ## Cấu hình compute
 
-EC2 Standard quota **8 vCPU**. ASG có Min=0, Max=1; worker **m7i-flex.large**, 2 vCPU / 8 GiB RAM.
+EC2 Standard quota **8 vCPU**. ASG có Min=0, Max=3; worker **m7i-flex.large**, 2 vCPU / 8 GiB RAM.
 Đã kiểm tra instance type và AMI có thuộc loại được account cho phép tạo. Security group không mở inbound/SSH;
 worker dùng instance role, IMDSv2, public IPv4 để tải image và truy cập dịch vụ AWS.
 
-Alarm SQS tăng từng worker khi có tác vụ. Khi cả hàng đợi và tác vụ đang xử lý rỗng đủ 15 phút,
+Alarm SQS dùng step scaling +1/+2/+3 theo số message, tối đa 3 worker. Khi cả hàng đợi và tác vụ đang xử lý rỗng đủ 15 phút,
 alarm thu nhóm về 0. Khi hàng đợi mới hoạt động, metric CloudWatch có thể tới muộn; không cam kết khởi động tức thì.
 
-Máy inference riêng: **m7i-flex.large**, 2 vCPU / 8 GiB, EBS 30 GB, luôn chạy để duy trì endpoint.
-Tổng compute tối đa: 2 vCPU train + 2 vCPU inference = 4 vCPU. Máy inference không scale về 0 theo worker.
+Máy inference riêng: **m7i-flex.large**, 2 vCPU / 8 GiB, EBS 30 GB, tự stop khi không có yêu cầu hợp lệ trong 72 giờ.
+Tổng compute tối đa: 6 vCPU train + 2 vCPU inference = 8 vCPU. Máy inference không scale về 0 theo worker.
 
 Tài khoản mới giới hạn Lambda **512 MB/function**, concurrency **5**. Controller, DLQ và Predict đều đã tạo
 với 512 MB; Predict chuyển tiếp request tới EC2 trong VPC, timeout HTTP 25 giây. Chế độ compute và memory được cấu hình qua CloudFormation/script deploy.
@@ -53,7 +53,7 @@ với 512 MB; Predict chuyển tiếp request tới EC2 trong VPC, timeout HTTP 
 
 ## Bằng chứng kiểm thử
 
-- 50 tests Python, 17 tests frontend, TypeScript/Vite build, CloudFormation lint: pass.
+- 76 tests Python, 26 tests frontend, TypeScript/Vite build, CloudFormation lint: pass.
 - GitHub backend/frontend CI và Cloudflare Workers Builds cho commit `74af061`: success.
 - Production `/config.js` đã chứa đúng API/Cognito mới và `inferenceMode=ec2`, cache-control no-store; `/app` trả 200.
 - Màn hình khóa workspace đã kiểm tra bằng Chrome headless ở desktop và viewport 390 px, không có tràn ngang.
@@ -85,9 +85,7 @@ Tài khoản kiểm thử tạm đã được xóa; tài khoản người dùng 
 4. Đợi EC2 khởi động; xem validation leaderboard, chỉ số test holdout, đường cong loss/RMSE.
 5. Triển khai mô hình, lưu khóa API vừa tạo, mở playground để dự đoán và lấy mẫu cURL.
 
-Hiện chỉ hai bài toán dữ liệu bảng với LightGBM có bộ xử lý train/inference. Sáu bài toán khác có giao diện
-và kiểm tra cấu trúc dữ liệu, nhưng chưa có bộ xử lý tương ứng. Không có GPU trong deployment này.
-Dashboard chưa đọc số lượng EC2/CPU trực tiếp; mục hạ tầng hiển thị cấu hình đã triển khai có ngày ghi nhận.
+Hiện có 8 task train/inference: phân loại/hồi quy bảng, ảnh, segmentation, anomaly detection, clustering, văn bản và forecast một chuỗi. Không có GPU. Dashboard đọc số worker và hàng đợi qua `/compute` mỗi 10 giây. Các phần ghi ngày phía dưới là lịch sử kiểm chứng, không thay thế cấu hình hiện tại.
 
 ## Cập nhật deployment
 
@@ -201,3 +199,16 @@ and training remain available while inference is stopped. EBS storage remains bi
 The instance ID can change on service updates; find the machine by its Name tag.
 The optional `InferenceImageUri` updates service code from the unchanged base model
 image, preserving artifact compatibility; full deploys reset this override.
+
+
+## Task mở rộng và kiểm tải — 28/11/2026
+
+Đã triển khai bốn task mới: anomaly detection, clustering, phân loại văn bản và forecast một chuỗi. Backend dùng code overlay digest `sha256:e79b4cfe0cfad5669db4d30ecd3c2425ad0632ed2e25a12251f8cd02832458c4` cho Controller/Worker/Inference; giữ nguyên digest nền ML để model cũ vẫn tương thích.
+
+- 76 backend tests, 26 frontend tests, build TypeScript/Vite và cfn-lint: pass.
+- 8 lựa chọn thuật toán train/save/load/predict thật trong image production: pass.
+- 4 job qua Cognito → S3 → preprocess → SQS → EC2 → deploy → predict: pass; khóa sai trả 401.
+- ASG tự tăng 0→3 khi có 4 job. Thời gian chờ nhận việc 261–274 giây, gồm metric/alarm và bootstrap máy.
+- Kiểm tải 72 request, một dòng/request, hai model, concurrency 1/2/4: 68 HTTP 200, 4 HTTP 429, không 5xx/timeout. Mức 1/2 đạt 48/48; mức 4 đạt 20/24. p95 thành công khoảng 988–1.106 ms, gồm mạng từ client Việt Nam. Không phải benchmark tải dài hạn.
+- Dọn xong 16 record và 16 khóa artifact/version của user kiểm thử, đã xóa user tạm. Không xóa model người dùng.
+- Số đo chi tiết và báo cáo LaTeX/PDF tại `Cloud_Report/evidence/` và `Cloud_Report/Stratus_Cloud_Report.pdf` (thư mục report nằm ngoài Git theo cấu hình hiện có).

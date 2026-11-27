@@ -11,6 +11,7 @@ from pathlib import Path
 from collections import Counter
 
 from app.domain import ConflictError, NotFoundError
+from app.task_options import CSV_TASKS, UNSUPERVISED, validate_special_rows
 
 MAX_BYTES = 200_000_000
 MISSING = {"", "nan", "null", "none", "n/a"}
@@ -118,7 +119,7 @@ class DatasetService:
     def create_upload(self, payload):
         from app.vision_data import VISION_TASKS, MAX_ZIP_BYTES
         task = payload.get("task", "tabular")
-        if not isinstance(task, str) or task not in VISION_TASKS | {"tabular", "classification", "regression"}:
+        if not isinstance(task, str) or task not in VISION_TASKS | CSV_TASKS:
             raise ValueError("Unsupported dataset task")
         vision = task in VISION_TASKS
         name = payload.get("name", "dataset.csv")
@@ -179,12 +180,27 @@ class DatasetService:
         with tempfile.TemporaryDirectory() as folder:
             source, destination = Path(folder) / "source.csv", Path(folder) / "prepared.csv"
             self.artifacts.download_bounded(original["dataset_key"], source, MAX_BYTES)
-            report, info = prepare_file(source, destination, options)
+            task = original.get("task", "tabular")
+            if task == "forecasting":
+                from app.csv_stream import rows
+                source_rows = rows(source)
+                columns = next(source_rows)
+                if set(columns) != {"timestamp", "target"}: raise ValueError("Forecasting requires timestamp,target columns")
+                validate_special_rows(task, columns, source_rows)
+            report, info = prepare_file(source, destination, options, task)
+            if task in {"text-classification", "forecasting"}:
+                from app.csv_stream import rows
+                prepared_rows = rows(destination)
+                columns = next(prepared_rows)
+                expected = {"text", "label"} if task == "text-classification" else {"timestamp", "target"}
+                if set(columns) != expected: raise ValueError("Keep exactly the required task columns")
+                validate_special_rows(task, columns, prepared_rows)
             self.artifacts.save_file(key, destination)
         item = {"id": f"dataset#{new_id}", "dataset_id": new_id, "owner": self.owner,
                 "kind": "dataset", "name": original["name"], "status": "READY",
                 "source_id": dataset_id, "dataset_key": key, "prepared": True,
-                "target": options["target"], "preprocessing": options,
+                "task": original.get("task", "tabular"),
+                "target": "" if original.get("task") in UNSUPERVISED else options["target"], "preprocessing": options,
                 "report": report, "profile": info}
         self.repository.put_record(item)
         return item

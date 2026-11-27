@@ -143,6 +143,13 @@ export function TaskArt({
             </svg>
           )}
         </>
+      ) : ["anomaly-detection", "clustering"].includes(id) ? (
+        <div className="st-plot-art"><div className="st-art-axis">{id === "clustering" ? "NHÓM CÁC ĐIỂM TƯƠNG ĐỒNG" : "PHÁT HIỆN ĐIỂM KHÁC THƯỜNG"}</div>
+          <svg viewBox="0 0 300 130" role="img" aria-label="Các nhóm điểm và điểm ngoại lệ">
+            {Array.from({length: 45}, (_, i) => <circle key={i} cx={55 + (i%3)*90 + Math.sin(i*2.1)*22} cy={65+Math.cos(i*1.7)*24} r="4" fill={id === "clustering" ? ["#437de8", "#42b9a5", "#b68be5"][i%3] : "#437de8"} />)}
+            {id === "anomaly-detection" && <><circle cx="170" cy="10" r="7" fill="#ed8c55"/><circle cx="100" cy="117" r="7" fill="#ed8c55"/></>}
+          </svg>
+        </div>
       ) : id === "text-classification" ? (
         <div className="st-text-art">
           <div>
@@ -267,6 +274,7 @@ export function LineChart({
   const uid = useId().replace(/:/g, "");
   const count = Math.max(1, ...series.map((s) => s.values.length));
   const all = series.flatMap((s) => s.values).filter(Number.isFinite);
+  const min = percent ? 0 : Math.min(0, ...all) * 1.12;
   const max = percent ? 1 : Math.max(0.1, ...all) * 1.12;
   const w = 600,
     h = height,
@@ -276,7 +284,7 @@ export function LineChart({
     bottom = 35;
   const x = (i: number) =>
       left + (i / Math.max(1, count - 1)) * (w - left - right),
-    y = (v: number) => top + (1 - v / max) * (h - top - bottom);
+    y = (v: number) => top + (1 - (v - min) / (max - min)) * (h - top - bottom);
   return (
     <div className="st-chart">
       <svg
@@ -312,7 +320,7 @@ export function LineChart({
           </linearGradient>
         </defs>
         {[0, 1, 2, 3, 4].map((i) => {
-          const v = (max * i) / 4;
+          const v = min + ((max - min) * i) / 4;
           return (
             <g key={i}>
               <line
@@ -533,7 +541,9 @@ export function DataEvolution({
           title: "Dữ liệu đã xử lý",
           info: vision
             ? "Đổi kích thước · chuẩn hóa · chia tập"
-            : "Lược đồ · giá trị thiếu · chia tập",
+            : taskId === "forecasting" ? "Độ trễ · chia tập theo thời gian"
+            : taskId === "text-classification" ? "N-gram · chia tập theo nhãn"
+            : ["anomaly-detection", "clustering"].includes(taskId) ? "Trung vị · chuẩn hóa · chia tập" : "Lược đồ · giá trị thiếu · chia tập",
         },
         {
           icon: Boxes,

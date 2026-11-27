@@ -6,7 +6,9 @@ export type TaskId =
   | "classification"
   | "regression"
   | "text-classification"
-  | "forecasting";
+  | "forecasting"
+  | "anomaly-detection"
+  | "clustering";
 export type ModelSpec = {
   id: string;
   name: string;
@@ -254,22 +256,9 @@ const CATALOG: TaskSpec[] = [
     metric: "f1",
     metricLabel: "F1 có trọng số",
     color: "#9f8dff",
-    models: [
-      m(
-        "distilbert",
-        "DistilBERT",
-        "Transformer",
-        "Bộ mã hóa nhỏ gọn cho phân loại văn bản.",
-        "128 token",
-      ),
-      m(
-        "bert",
-        "BERT base",
-        "Transformer",
-        "Biểu diễn ngữ cảnh hai chiều.",
-        "256 token",
-      ),
-    ],
+    live: true,
+    models: [m("lightgbm", "LightGBM + n-gram", "AutoGluon Tabular", "Học từ từ đơn và cặp từ; tối đa 2.000 đặc trưng.", "CPU"),
+      m("extratrees", "Extra Trees + n-gram", "AutoGluon Tabular", "Tổ hợp cây trên đặc trưng văn bản.", "CPU")],
   },
   {
     id: "forecasting",
@@ -279,35 +268,37 @@ const CATALOG: TaskSpec[] = [
     description:
       "Học xu hướng theo thời gian để dự báo các giá trị tiếp theo của một chuỗi.",
     input: "CSV · timestamp,target",
-    output: "Dự báo + khoảng tin cậy",
+    output: "Giá trị tương lai theo thời gian",
     accept: ".csv",
     format: "CSV UTF-8 · timestamp,target",
     structure:
       "timestamp,target\n2026-01-01,120\n2026-01-02,134\n2026-01-03,127\n\nSắp xếp thời gian tăng dần.\nTách tập huấn luyện, kiểm định và kiểm tra theo thời gian.",
-    metric: "mape",
-    metricLabel: "MAPE",
+    metric: "rmse",
+    metricLabel: "Sai số RMSE",
     color: "#4bd6c9",
-    models: [
-      m(
-        "prophet",
-        "Prophet",
-        "Mô hình cộng",
-        "Phân tích xu hướng và tính mùa vụ.",
-        "30 ngày",
-      ),
-      m(
-        "lstm",
-        "LSTM",
-        "Mạng hồi tiếp",
-        "Học quan hệ giữa các bước thời gian.",
-        "30 ngày",
-      ),
-    ],
+    live: true,
+    models: [m("lightgbm", "LightGBM theo độ trễ", "AutoGluon Tabular", "Dùng các giá trị gần nhất để dự báo đệ quy.", "CPU"),
+      m("extratrees", "Extra Trees theo độ trễ", "AutoGluon Tabular", "Tổ hợp cây với các đặc trưng lịch sử.", "CPU")],
   },
 ];
-export const TASKS = CATALOG
-  .filter((task) => ["image-classification", "segmentation", "classification", "regression"].includes(task.id))
-  .map((task) => task.group === "Dữ liệu bảng" ? { ...task, models: task.models.filter((model) => model.id === "lightgbm") } : task);
+CATALOG.push({
+  id: "anomaly-detection", name: "Phát hiện bất thường", vi: "Phát hiện bất thường", group: "Dữ liệu bảng",
+  description: "Tìm các quan sát khác thường trong dữ liệu cảm biến, vận hành hoặc giao dịch; không cần nhãn.",
+  input: "CSV · đặc trưng dạng số", output: "Bất thường + điểm số", accept: ".csv", format: "CSV UTF-8 · 2–50 cột số",
+  structure: "temperature,pressure,vibration\n24.3,101.2,0.12\n25.1,100.9,0.15\n\n30–20.000 dòng; LOF tối đa 5.000 dòng.\nChỉ giữ đặc trưng, bỏ cột ID và nhãn.",
+  metric: "outlier_rate", metricLabel: "Tỷ lệ bất thường", color: "#ed8c55", live: true,
+  models: [m("isolation-forest", "Isolation Forest", "scikit-learn", "Cô lập các điểm hiếm bằng các cây ngẫu nhiên.", "CPU"),
+    m("lof", "Local Outlier Factor", "scikit-learn · novelty", "So sánh mật độ cục bộ với các điểm lân cận.", "CPU")],
+}, {
+  id: "clustering", name: "Phân cụm dữ liệu", vi: "Phân cụm dữ liệu", group: "Dữ liệu bảng",
+  description: "Khám phá các nhóm tương đồng trong dữ liệu để phân khúc khách hàng hoặc nhóm hành vi.",
+  input: "CSV · đặc trưng dạng số", output: "Mã cụm + khoảng cách", accept: ".csv", format: "CSV UTF-8 · 2–50 cột số",
+  structure: "frequency,spend,tenure\n3,240,12\n12,890,36\n\n30–20.000 dòng; không cần nhãn.\nChỉ giữ đặc trưng, bỏ cột ID.",
+  metric: "silhouette", metricLabel: "Độ tách cụm", color: "#3fb5a3", live: true,
+  models: [m("kmeans", "K-Means", "scikit-learn", "Tìm các tâm cụm trên dữ liệu đã chuẩn hóa.", "CPU"),
+    m("minibatch-kmeans", "MiniBatch K-Means", "scikit-learn", "Cập nhật tâm cụm theo lô nhỏ.", "CPU")],
+});
+export const TASKS = CATALOG.filter(task => task.live).map(task => ({...task, models: task.models.filter(model => model.id !== "xgboost")}));
 export const taskById = (id: string) =>
   TASKS.find((task) => task.id === id) || TASKS[0];
 export const modelById = (task: TaskSpec, id: string) =>
@@ -332,6 +323,11 @@ export type RunConfig = {
   classes: number;
   target: string;
   timeLimit: number;
+  contamination: number;
+  neighbors: number;
+  clusters: number;
+  lags: number;
+  horizon: number;
 };
 export function defaultConfig(
   taskId: TaskId = "image-classification",
@@ -347,7 +343,7 @@ export function defaultConfig(
     learningRate: 0.001,
     trainSplit: 80,
     instance: "m7i-flex.large",
-    maxWorkers: 1,
+    maxWorkers: 3,
     augment: true,
     normalize: true,
     earlyStopping: true,
@@ -355,7 +351,8 @@ export function defaultConfig(
     sample: false,
     count: 0,
     classes: 0,
-    target: "",
+    contamination: 0.05, neighbors: 20, clusters: 3, lags: 7, horizon: 7,
+    target: taskId === "text-classification" ? "label" : taskId === "forecasting" ? "target" : "",
     timeLimit: task.group === "Thị giác máy tính" ? 300 : 60,
   };
 }

@@ -1,5 +1,5 @@
 const ratios = new Set([
-  "accuracy", "balanced_accuracy", "pixel_accuracy", "f1", "f1_macro", "f1_micro",
+  "outlier_rate", "smape", "accuracy", "balanced_accuracy", "pixel_accuracy", "f1", "f1_macro", "f1_micro",
   "f1_weighted", "precision", "precision_macro", "precision_weighted", "recall",
   "recall_macro", "recall_weighted", "roc_auc", "miou", "dice",
 ]);

@@ -78,7 +78,7 @@ Luôn giữ target và ít nhất một feature. Chuỗi rỗng, `NaN`, `null`, 
 {"dataset_id":"<prepared dataset>","name":"Customer churn v1","task":"classification","time_limit":60}
 ```
 
-Target lấy từ dataset đã preprocess. `task`: `classification`, `regression`, `tabular` (auto), `image-classification`, `segmentation`.
+Target lấy từ dataset đã preprocess. `task`: `classification`, `regression`, `tabular` (auto), `image-classification`, `segmentation`, `anomaly-detection`, `clustering`, `text-classification`, `forecasting`.
 Ảnh yêu cầu ZIP đã xác minh/chuẩn bị, không nhận CSV inline. Xem [hợp đồng ảnh](image-workflows.md).
 `submission_id` UUID tùy chọn giúp thử lại cùng request mà không tạo job trùng.
 `time_limit` integer 10–600 giây. Classification cần ≥2 lớp; regression target phải là số hữu hạn.
@@ -218,3 +218,28 @@ The controller self-invokes for background processing (600-second timeout, 1 GB
 temporary disk). `ControllerImageUri` optionally updates API code independently,
 built from the exact model image without changing ML dependencies. Model runtime
 identity remains `ImageUri`; the normal full deploy resets this override.
+
+
+## Task CSV mở rộng (28/11/2026)
+
+Tạo upload với đúng `task`, rồi complete/preprocess. Chỉ POST `/jobs` sau khi người dùng xác nhận toàn bộ cấu hình. CSV tối đa 200 MB; bốn task mới giới hạn 30–20.000 dòng.
+
+| Task | Dữ liệu / target | config |
+| --- | --- | --- |
+| `anomaly-detection` | 2–50 cột số, bỏ ID/nhãn; `target: ""` | `model: "isolation-forest"` hoặc `"lof"`, `contamination: 0.05` (0.001–0.5), `neighbors: 20` (2–100) |
+| `clustering` | 2–50 cột số; `target: ""` | `model: "kmeans"` hoặc `"minibatch-kmeans"`, `clusters: 3` (2–20) |
+| `text-classification` | đúng `text,label`; target `label` | `model: "lightgbm"` hoặc `"extratrees"` |
+| `forecasting` | đúng `timestamp,target`; target `target` | `model: "lightgbm"` hoặc `"extratrees"`, `lags: 7` (2–30), `horizon: 7` (1–30) |
+
+LOF tối đa 5.000 dòng. Văn bản 1–5.000 ký tự/dòng. Forecast là một chuỗi ISO không kèm timezone, tăng dần đều, target hữu hạn; cần ít nhất `max(30, 3*horizon + lags + 10)` dòng. Dùng AutoGluon Tabular + lag, không phải TimeSeriesPredictor. Anomaly/clustering dùng scikit-learn; preprocessing median/StandardScaler chỉ fit trên 80% train. Không có accuracy khi thiếu nhãn thật. Thời gian fit AutoGluon là ngân sách mềm; sklearn bị giới hạn số dòng/cây/vòng lặp.
+
+Ví dụ cấu hình job: `{"dataset_id":"...","task":"clustering","time_limit":60,"config":{"model":"kmeans","clusters":3}}`.
+
+Inference vẫn dùng `/predict/{deployment_id}` và `X-Api-Key`:
+
+- Anomaly: `{"rows":[{"temperature":24,"pressure":101}]}` → `predictions` boolean và `anomalies` gồm `is_anomaly`, `score`, `threshold:0`; score > 0 là bất thường.
+- Clustering: cùng dạng rows → `predictions` mã cụm, `clusters` gồm `cluster,distance` trong không gian chuẩn hóa.
+- Text: `{"rows":[{"text":"Sản phẩm rất tốt"}]}` → nhãn và `probabilities` theo lớp.
+- Forecast: `{"horizon":7}` → `forecasts:[{"timestamp":"...","value":...}]`. Có thể thêm `history:[{"timestamp":"...","target":123},...]`, 2–5.000 dòng và ít nhất số lags, cùng khoảng thời gian như dữ liệu train. Không truyền history thì dùng cửa sổ cuối đã lưu trong artifact.
+
+Task bảng cũ nhận `config.model` là `lightgbm`, `randomforest`, `extratrees`. Một job huấn luyện một thuật toán. Evaluation của forecast dùng đoạn cuối và dự báo đệ quy; model không nhận giá trị thật của đoạn kiểm tra. Chỉ số loss được hiển thị khi thuật toán lưu lịch sử thực tế.

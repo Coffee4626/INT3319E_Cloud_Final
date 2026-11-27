@@ -29,7 +29,7 @@ class TrainingRequest:
         request = cls(csv=data.get("csv"), target=data.get("target"),
                       task=data.get("task", "tabular"), time_limit=data.get("time_limit", 60),
                       config=data.get("config", {}))
-        if not isinstance(request.csv, str) or not isinstance(request.target, str) or not request.target:
+        if not isinstance(request.csv, str) or not isinstance(request.target, str) or (not request.target and request.task not in {"anomaly-detection", "clustering"}):
             raise ValueError("csv and target must be non-empty strings")
         if len(request.csv.encode()) > 10_000_000:
             raise ValueError("CSV limit: 10 MB")

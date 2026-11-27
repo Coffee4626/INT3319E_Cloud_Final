@@ -227,6 +227,7 @@ export type Dataset = {
   report?: Record<string, number | string[]>;
 };
 export type Metrics = {
+  forecast_evaluation?: {timestamp: string; actual: number; predicted: number}[];
   learning_curve_metric?: string;
   learning_curves?: Record<string, {epoch: number; train: number; validation: number}[]>;
   leaderboard?: {

@@ -16,6 +16,7 @@ from app.domain import ArtifactStore, ConflictError, JobQueue, JobRepository, No
 from app.datasets import DatasetService, MAX_BYTES
 from app.tasks.factory import TaskFactory
 from app.vision_data import VISION_TASKS, training_config
+from app.task_options import EXTENDED, task_config, validate_profile
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +45,8 @@ class JobService:
             vision = dataset.get("task") in VISION_TASKS
             if vision != (payload.get("task") in VISION_TASKS) or (vision and dataset["task"] != payload["task"]):
                 raise ValueError("Dataset task does not match the requested training task")
+            if (dataset.get("task") in EXTENDED or payload.get("task") in EXTENDED) and dataset.get("task") != payload.get("task"):
+                raise ValueError("Dataset task does not match the requested training task")
             large_csv = not vision and dataset["profile"]["size_bytes"] > 10_000_000
             payload = {**payload, "csv": "" if vision or large_csv else self.artifacts.read_csv(dataset["dataset_key"], MAX_BYTES),
                        "target": dataset["target"]}
@@ -53,18 +56,11 @@ class JobService:
         if request.task in VISION_TASKS and not dataset:
             raise ValueError("Image training requires a validated, prepared ZIP dataset")
         task = self.tasks.create(request.task)
+        settings = training_config(request.task, request.config) if request.task in VISION_TASKS else task_config(request.task, request.config)
         if large_csv:
-            columns = dataset["profile"]["columns"]
-            target = next((c for c in columns if c["name"] == request.target), None)
-            if not target or target["missing"]:
-                raise ValueError("Target values must not be empty")
-            if request.task == "classification" and target["unique"] < 2:
-                raise ValueError("Classification needs at least two distinct target classes")
-            if request.task == "regression" and target["type"] != "numeric":
-                raise ValueError("Regression target values must be finite numbers")
+            validate_profile(request.task, request.target, dataset["profile"], settings)
         else:
             task.validate_training(request)
-        settings = training_config(request.task, request.config) if request.task in VISION_TASKS else {}
         job_id = uuid.uuid5(uuid.NAMESPACE_URL, self.owner + ":" + submission_id).hex if submission_id else uuid.uuid4().hex
         name = payload.get("name") or (dataset["name"] if dataset else "Untitled experiment")
         if not isinstance(name, str) or len(name) > 120:

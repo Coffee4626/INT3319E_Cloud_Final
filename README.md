@@ -155,7 +155,7 @@ npm run build
 
 ## Phạm vi và giới hạn
 
-- Giao diện cung cấp phân loại ảnh, phân đoạn ngữ nghĩa, phân loại và hồi quy dữ liệu bảng.
+- Giao diện cung cấp phân loại ảnh, phân đoạn ngữ nghĩa, phân loại/hồi quy bảng, phát hiện bất thường, phân cụm, phân loại văn bản và dự báo.
   [Hướng dẫn ảnh, cấu hình và inference](docs/image-workflows.md). ZIP ảnh tối đa 200 MB.
   Wizard giữ tệp trên thiết bị: chỉ bấm Bắt đầu huấn luyện mới upload, chuẩn bị dữ liệu và tạo job.
   Biểu đồ hạ tầng mô tả kiến trúc; không tự suy diễn số máy đang chạy từ trạng thái job.
@@ -169,12 +169,12 @@ npm run build
   deploy không build một Docker image riêng cho từng model. Chỉ model từ worker của hệ thống mới được load.
 - `time_limit` 10–600 giây là ngân sách fit mềm, không phải hard timeout cho toàn bộ job.
   Bài toán ảnh dùng thư mục val để chọn checkpoint và báo chỉ số, chưa có test độc lập.
-- Production dùng `INFERENCE_MODE=ec2`: một máy 2 vCPU / 8 GB luôn chạy để phục vụ endpoint; worker train co giãn 0–1.
+- Production dùng `INFERENCE_MODE=ec2`: một máy 2 vCPU / 8 GB, dừng sau 3 ngày rảnh; worker train co giãn 0–3.
   Lambda proxy chờ tối đa 25 giây; model ≤1 GB uncompressed và body dự đoán ≤1 MB.
   EC2 xử lý một request mỗi lần để bảo vệ cache; request đồng thời trả 429 để client thử lại.
   Đây là một máy inference, chưa có cân bằng tải/HA. Có thể chọn `INFERENCE_MODE=lambda` khi quota memory/CPU phù hợp.
 - Mỗi process cache một model; luân phiên nhiều deployment gây reload. Không có cam kết latency production.
-- Khi đổi image digest, runtime từ chối model cũ để tránh lệch dependency. Cần retrain/redeploy model;
+- Khi đổi digest nền `MODEL_IMAGE_URI`, runtime từ chối model cũ để tránh lệch dependency. Cần retrain/redeploy model;
   dừng submit và đợi queue rỗng trước khi upgrade stack.
 - Dashboard đếm trên trang gần nhất (30 records mỗi loại), hiển thị chú thích khi có trang tiếp theo.
 - Local không phải môi trường multi-user an toàn. AWS dùng Cognito + owner checks cho mỗi tài nguyên;
@@ -183,3 +183,14 @@ npm run build
   GPU, time-series, NLP, object detection hoặc instance segmentation.
 
 Tham khảo thiết kế và nguồn AWS: [docs/architecture.md](docs/architecture.md).
+
+
+### Các task mới
+
+Studio hỗ trợ 8 task: phân loại/hồi quy bảng, phân loại ảnh, segmentation, anomaly detection, clustering, phân loại văn bản và forecast một chuỗi. Mỗi task có dữ liệu mẫu CSV (nếu áp dụng), cấu hình model và playground inference riêng. [Hợp đồng API](docs/api.md#task-csv-mở-rộng-28112026) nêu rõ schema, thuật toán và giới hạn.
+
+- `scripts/check_extended_ml.py`: kiểm tra train → lưu → load → predict thật cho 8 lựa chọn thuật toán mới trong image ML.
+- `scripts/check_extended_cloud.py`: bốn job AWS và 72 request kiểm tải, concurrency tối đa 4. Chỉ chạy với tài khoản Cognito kiểm thử có email `@example.invalid`; tự dọn record/artifact của tài khoản đó. Cần `ID_TOKEN`, `API_URL`, AWS profile và `PYTHONPATH=.`. Không dùng tài khoản người dùng thật.
+- Báo cáo LaTeX/PDF và số đo nằm trong thư mục `Cloud_Report` hiện được giữ ngoài Git theo cấu hình repository.
+
+Khi chỉ thay mã ứng dụng, build `Dockerfile.controller` từ digest `ImageUri` hiện tại và đặt `ControllerImageUri`, `WorkerImageUri`, `InferenceImageUri` vào digest mới. Giữ nguyên `ImageUri` để tương thích artifact cũ; chỉ dùng cách này khi thư viện ML không đổi. Đợi queue rỗng trước khi thay worker/inference. Deploy đầy đủ qua `scripts/deploy.sh` cập nhật nền ML, xóa các override và có thể cần train lại model.

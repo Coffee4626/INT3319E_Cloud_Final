@@ -28,10 +28,18 @@ def default_factory() -> TaskFactory:
     from app.tasks.tabular import AutoTabularTask, ClassificationTask, RegressionTask
     from app.tasks.vision import ImageClassificationTask, SegmentationTask
 
+    from app.tasks.unsupervised import AnomalyTask, ClusteringTask
+    from app.tasks.forecasting import ForecastingTask
+    from app.tasks.tabular import TextClassificationTask
+
     factory = TaskFactory()
     factory.register("tabular", AutoTabularTask)
     factory.register("classification", ClassificationTask)
     factory.register("regression", RegressionTask)
     factory.register("image-classification", ImageClassificationTask)
     factory.register("segmentation", SegmentationTask)
+    factory.register("anomaly-detection", AnomalyTask)
+    factory.register("clustering", ClusteringTask)
+    factory.register("text-classification", TextClassificationTask)
+    factory.register("forecasting", ForecastingTask)
     return factory

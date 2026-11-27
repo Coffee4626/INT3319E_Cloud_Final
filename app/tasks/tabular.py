@@ -39,6 +39,9 @@ class TabularTask(MLTask):
     def problem_type(self, labels):
         """Return an AutoGluon problem type, or None for automatic detection."""
 
+    def fit_options(self):
+        return {}
+
     def train(self, dataset, model_dir, job):
         from autogluon.tabular import TabularDataset, TabularPredictor
         from app.tasks.evaluation import evaluate, split_indices
@@ -52,9 +55,11 @@ class TabularTask(MLTask):
         predictor = TabularPredictor(label=job["target"], path=str(model_dir),
                                      problem_type=problem_type)
         curve_metric = "root_mean_squared_error" if problem_type == "regression" else "log_loss"
+        model = job.get("config", {}).get("model", "lightgbm")
+        hyperparameters = {"lightgbm": {"GBM": {}}, "randomforest": {"RF": {"n_estimators": 100}}, "extratrees": {"XT": {"n_estimators": 100}}}[model]
         predictor.fit(data.iloc[train_indices], time_limit=int(job["time_limit"]),
-                      hyperparameters={"GBM": {}}, fit_weighted_ensemble=False,
-                      learning_curves={"metrics": [curve_metric], "use_error": True})
+                      hyperparameters=hyperparameters, fit_weighted_ensemble=False,
+                      learning_curves={"metrics": [curve_metric], "use_error": True}, **self.fit_options())
         leaderboard = json.loads(predictor.leaderboard(silent=True).to_json(orient="records"))
         metrics = {"leaderboard": leaderboard, "best_model": predictor.model_best,
                    "eval_metric": predictor.eval_metric.name, "problem_type": predictor.problem_type,
@@ -119,3 +124,28 @@ class RegressionTask(TabularTask):
 
     def problem_type(self, labels):
         return "regression"
+
+
+class TextClassificationTask(ClassificationTask):
+    def validate_training(self, request):
+        from app.datasets import profile, read_csv
+        from app.task_options import task_config, validate_profile, validate_special_rows
+        validate_profile(request.task, request.target, profile(request.csv), task_config(request.task, request.config))
+        columns, data = read_csv(request.csv)
+        validate_special_rows(request.task, columns, data)
+        super().validate_training(request)
+
+    def fit_options(self):
+        from autogluon.common.features.feature_metadata import FeatureMetadata
+        from autogluon.features.generators import AutoMLPipelineFeatureGenerator
+        from sklearn.feature_extraction.text import CountVectorizer
+        return {"feature_metadata": FeatureMetadata(type_map_raw={"text": "object"}, type_group_map_special={"text": ["text"]}),
+                "feature_generator": AutoMLPipelineFeatureGenerator(vectorizer=CountVectorizer(max_features=2000, ngram_range=(1,2), min_df=1))}
+
+    def predict(self, model, rows):
+        import pandas as pd
+        if any(not isinstance(row.get("text"), str) or not 1 <= len(row["text"].strip()) <= 5000 for row in rows):
+            raise ValueError("Text must contain 1–5,000 characters")
+        result = super().predict(model, rows)
+        result["probabilities"] = json.loads(model.predict_proba(pd.DataFrame(rows)).to_json(orient="records"))
+        return result

@@ -115,8 +115,8 @@ test("ZIP rejects traversal, truncated data and huge entry counts", async () => 
   );
 });
 test("Supported image and tabular tasks have explicit models and data contracts", () => {
-  assert.equal(TASKS.length, 4);
-  assert.equal(new Set(TASKS.map((t) => t.id)).size, 4);
+  assert.equal(TASKS.length, 8);
+  assert.equal(new Set(TASKS.map((t) => t.id)).size, 8);
   assert.deepEqual(TASKS.filter(t => t.group === "Thị giác máy tính").map(t => t.id), ["image-classification", "segmentation"]);
   assert.ok(TASKS.every(t => t.live));
   for (const t of TASKS) {
@@ -158,4 +158,13 @@ test("Streaming CSV handles UTF-8 and escaped quotes across single-byte chunks",
   assert.deepEqual(rows, [['x','y'], ['mèo, "đen"','yes'], ['hai\ndòng','no']]);
   for (const invalid of ['x,y\n"open,a', 'x,y\n"closed"bad,a', 'x,y\na"b,a'])
     await assert.rejects(scanCsv(file(invalid), () => {}));
+});
+
+
+test("New task samples satisfy their CSV contracts", async () => {
+  const {extendedSample} = await import('../src/studio/samples.ts');
+  for (const id of ['anomaly-detection','clustering','text-classification','forecasting']) {
+    const result = await inspectFile(extendedSample(id),taskById(id));
+    assert.equal(result.count,240);
+  }
 });

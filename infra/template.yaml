@@ -19,6 +19,10 @@ Parameters:
     Type: String
     Default: ''
     Description: Optional controller-only image built from ImageUri without changing ML dependencies
+  WorkerImageUri:
+    Type: String
+    Default: ''
+    Description: Optional worker code overlay with unchanged ML dependencies
   InferenceImageUri:
     Type: String
     Default: ''
@@ -68,6 +72,7 @@ Parameters:
     Type: String
     Default: m7i-flex.large
 Conditions:
+  HasWorkerImage: !Not [!Equals [!Ref WorkerImageUri, '']]
   HasInferenceImage: !Not [!Equals [!Ref InferenceImageUri, '']]
   HasControllerImage: !Not [!Equals [!Ref ControllerImageUri, '']]
   ApiEnabled: !Equals [!Ref EnableApi, 'true']
@@ -677,24 +682,27 @@ Resources:
             AssociatePublicIpAddress: true
             Groups: [!Ref WorkerSecurityGroup]
         UserData:
-          Fn::Base64: !Sub |
-            #!/bin/bash
-            set -euo pipefail
-            dnf install -y docker
-            systemctl enable --now docker
-            TOKEN=$(curl -fsS -X PUT -H 'X-aws-ec2-metadata-token-ttl-seconds: 21600' http://169.254.169.254/latest/api/token)
-            INSTANCE_ID=$(curl -fsS -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/instance-id)
-            aws ecr get-login-password --region ${AWS::Region} | docker login --username AWS --password-stdin ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com
-            docker pull ${ImageUri}
-            docker run -d --name automl-worker --restart always \
-              --log-driver awslogs --log-opt awslogs-region=${AWS::Region} \
-              --log-opt awslogs-group=${WorkerLogs} \
-              -e AWS_DEFAULT_REGION=${AWS::Region} \
-              -e BUCKET_NAME=${DataBucket} -e TABLE_NAME=${StateTable} \
-              -e QUEUE_URL=${JobQueue} \
-              -e MODEL_IMAGE_URI=${ImageUri} \
-              -e WORKER_GROUP=${AWS::StackName}-workers -e INSTANCE_ID="$INSTANCE_ID" \
-              --entrypoint python ${ImageUri} -m app.worker
+          Fn::Base64:
+            Fn::Sub:
+              - |
+                #!/bin/bash
+                set -euo pipefail
+                dnf install -y docker
+                systemctl enable --now docker
+                TOKEN=$(curl -fsS -X PUT -H 'X-aws-ec2-metadata-token-ttl-seconds: 21600' http://169.254.169.254/latest/api/token)
+                INSTANCE_ID=$(curl -fsS -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/instance-id)
+                aws ecr get-login-password --region ${AWS::Region} | docker login --username AWS --password-stdin ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com
+                docker pull ${WorkerImage}
+                docker run -d --name automl-worker --restart always \
+                  --log-driver awslogs --log-opt awslogs-region=${AWS::Region} \
+                  --log-opt awslogs-group=${WorkerLogs} \
+                  -e AWS_DEFAULT_REGION=${AWS::Region} \
+                  -e BUCKET_NAME=${DataBucket} -e TABLE_NAME=${StateTable} \
+                  -e QUEUE_URL=${JobQueue} \
+                  -e MODEL_IMAGE_URI=${ImageUri} \
+                  -e WORKER_GROUP=${AWS::StackName}-workers -e INSTANCE_ID="$INSTANCE_ID" \
+                  --entrypoint python ${WorkerImage} -m app.worker
+              - WorkerImage: !If [HasWorkerImage, !Ref WorkerImageUri, !Ref ImageUri]
   Workers:
     Type: AWS::AutoScaling::AutoScalingGroup
     Properties:

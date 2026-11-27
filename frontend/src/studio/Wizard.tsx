@@ -33,6 +33,8 @@ import {
   type RunConfig,
 } from "./catalog";
 import { TaskArt, Architecture, DataEvolution } from "./Visuals";
+import { extendedSample } from "./samples";
+import { csvConfig } from "./taskConfig";
 import { inspectFile, downloadText, type DataSummary } from "./data";
 
 export function TaskCatalog({
@@ -49,6 +51,8 @@ export function TaskCatalog({
     "Tất cả",
     "Thị giác máy tính",
     "Dữ liệu bảng",
+    "Ngôn ngữ tự nhiên",
+    "Chuỗi thời gian",
   ];
   return (
     <>
@@ -123,7 +127,8 @@ export function Wizard({
   const uploaded = useRef<Dataset | null>(null);
   const task = taskById(form.taskId),
     isLive = !!task.live,
-    isTabular = task.group === "Dữ liệu bảng",
+    isTabular = task.accept === ".csv",
+    unsupervised = ["anomaly-detection", "clustering"].includes(task.id),
     isVision = task.group === "Thị giác máy tính";
   const patch = (v: Partial<RunConfig>) => {
     submissionId.current = null;
@@ -139,7 +144,7 @@ export function Wizard({
       sample: s.sample,
       count: s.count,
       classes: s.classes,
-      target: d?.target || s.columns.at(-1) || "",
+      target: d ? d.target : unsupervised ? "" : task.id === "text-classification" ? "label" : task.id === "forecasting" ? "target" : s.columns.at(-1) || "",
     });
   };
   useEffect(() => {
@@ -211,6 +216,8 @@ export function Wizard({
   }
   async function useSample() {
     if (!isLive) return;
+    const extra = extendedSample(task.id);
+    if (extra) { await receive(extra); return; }
     const f =
       task.id === "regression"
         ? new File(
@@ -264,7 +271,7 @@ export function Wizard({
           model: form.modelIds[0], epochs: form.epochs, batch_size: form.batchSize,
           learning_rate: form.learningRate, image_size: form.imageSize,
           augment: form.augment, early_stopping: form.earlyStopping,
-        }} : {}),
+        }} : {config: csvConfig(form)}),
       });
       onLive(j.job_id);
     } catch (e) {
@@ -366,12 +373,8 @@ export function Wizard({
                 {task.models.map((m) => (
                   <button
                     key={m.id}
-                    disabled={isTabular && m.id !== "lightgbm"}
-                    title={
-                      isTabular && m.id !== "lightgbm"
-                        ? "Mô hình này chưa khả dụng trong không gian làm việc."
-                        : m.name
-                    }
+                    disabled={false}
+                    title={m.name}
                     aria-pressed={form.modelIds.includes(m.id)}
                     className={`st-model-card ${form.modelIds.includes(m.id) ? "selected" : ""}`}
                     onClick={() =>
@@ -410,7 +413,7 @@ export function Wizard({
                       onChange={(e) => patch({ name: e.target.value })}
                     />
                   </label>
-                  {isLive && (
+                  {isLive && !unsupervised && (
                     <label>
                       Giới hạn thời gian (giây)
                       <select
@@ -469,7 +472,18 @@ export function Wizard({
                       </label>
                     </>
                   )}
-                  {isTabular && (
+                  {task.id === "anomaly-detection" && <>
+                    <label>Tỷ lệ bất thường dự kiến<input type="number" min="0.001" max="0.5" step="0.01" value={form.contamination} onChange={e => patch({contamination: +e.target.value})} /></label>
+                    {form.modelIds[0] === "lof" && <label>Số điểm lân cận<input type="number" min="2" max="100" value={form.neighbors} onChange={e => patch({neighbors: +e.target.value})} /></label>}
+                  </>}
+                  {task.id === "clustering" && <label>Số cụm<input type="number" min="2" max="20" value={form.clusters} onChange={e => patch({clusters: +e.target.value})} /></label>}
+                  {task.id === "forecasting" && <>
+                    <label>Số bước lịch sử<input type="number" min="2" max="30" value={form.lags} onChange={e => patch({lags: +e.target.value})} /></label>
+                    <label>Số bước dự báo / kiểm tra<input type="number" min="1" max="30" value={form.horizon} onChange={e => patch({horizon: +e.target.value})} /></label>
+                    <p className="st-note">Một chuỗi có khoảng thời gian đều. Cần ít nhất 3 × số bước dự báo + số bước lịch sử + 10 dòng (tối thiểu 30, tối đa 20.000). Kiểm tra trên đoạn cuối, dự báo đệ quy từ lịch sử.</p>
+                  </>}
+                  {unsupervised && <p className="st-note">Điền giá trị thiếu bằng trung vị, chuẩn hóa đặc trưng trên 80% dữ liệu huấn luyện. 20% còn lại dùng chẩn đoán bất thường hoặc độ tách cụm. Thuật toán chạy trên CPU với giới hạn số dòng và số vòng lặp.</p>}
+                  {isTabular && !unsupervised && task.id !== "forecasting" && (
                     <p className="st-note">
                       Giữ 20% dữ liệu làm tập kiểm tra độc lập khi đủ mẫu. AutoGluon tự tách tập kiểm định từ phần dữ liệu huấn luyện. Số vòng huấn luyện, kích thước lô và GPU không áp dụng cho mô hình này.
                     </p>
@@ -650,11 +664,11 @@ export function Wizard({
                     ) : (
                       <pre className="st-code">{summary.files.join("\n")}</pre>
                     )}
-                    {summary.columns.length > 0 && task.group === "Dữ liệu bảng" && (
+                    {summary.columns.length > 0 && isTabular && !unsupervised && (
                       <label>
                         Cột mục tiêu
                         <select
-                          disabled={prepared}
+                          disabled={prepared || ["forecasting", "text-classification"].includes(task.id)}
                           value={form.target}
                           onChange={(e) => {
                             patch({ target: e.target.value });
@@ -682,6 +696,7 @@ export function Wizard({
                         </span>
                       </div>
                     )}
+                    {unsupervised && <p className="st-note">Không cần cột mục tiêu. Giữ ít nhất hai đặc trưng dạng số; bỏ ID và nhãn nếu có.</p>}
                     <h4>Tiền xử lý</h4>
                     <div className="st-checks">
                       {isTabular ? (
@@ -707,8 +722,8 @@ export function Wizard({
                           <label>
                             <input
                               type="checkbox"
-                              disabled={prepared}
-                              checked={dropMissing}
+                              disabled={prepared || unsupervised || task.id === "forecasting"}
+                              checked={!unsupervised && dropMissing}
                               onChange={(e) => setDropMissing(e.target.checked)}
                             />{" "}
                             Loại dòng thiếu mục tiêu
@@ -723,7 +738,7 @@ export function Wizard({
                                 <label key={c}>
                                   <input
                                     type="checkbox"
-                                    disabled={prepared}
+                                    disabled={prepared || ["forecasting", "text-classification"].includes(task.id)}
                                     checked={dropColumns.includes(c)}
                                     onChange={(e) =>
                                       setDropColumns((d) =>
@@ -787,7 +802,7 @@ export function Wizard({
                         !!busy ||
                         prepared ||
                         (isTabular &&
-                          (!form.target ||
+                          ((!unsupervised && !form.target) ||
                             dropColumns.length >= summary.columns.length - 1))
                       }
                     >
