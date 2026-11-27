@@ -11,3 +11,5 @@ frontend/dist/
 .env.*
 !.env.example
 *.tsbuildinfo
+
+Cloud_Report/
