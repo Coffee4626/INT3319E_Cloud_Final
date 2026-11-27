@@ -49,8 +49,7 @@ docker compose up -d --build
 The smoke test exercises CSV upload, schema/profile, preprocessing, queue/worker
 training, real learning curves, holdout evaluation, deployment, prediction and API-key
 rejection for classification and regression. Dataset validation tests include quoted
-CSV, malformed rows/headers, forecasting order, ZIP traversal, split/class layouts,
-and per-image annotation paths.
+CSV, malformed rows/headers, ZIP traversal, split/class layouts, masks and class IDs.
 
 Image provenance is recorded in `frontend/public/tasks/sources.json`. Vision overlays
 are SVG illustrations explaining each task, not output from a trained model.

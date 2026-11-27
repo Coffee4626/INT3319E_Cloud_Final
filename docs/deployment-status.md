@@ -15,7 +15,7 @@ Tài khoản cũ `080665850368` và các hạn chế/support case của nó đư
 | Stack | Trạng thái | Nội dung |
 | --- | --- | --- |
 | `stratus-automl-network` | CREATE_COMPLETE | VPC, hai public subnet, Internet Gateway, routes |
-| `stratus-automl-registry` | CREATE_COMPLETE | ECR runtime AutoGluon/LightGBM amd64 |
+| `stratus-automl-registry` | CREATE_COMPLETE | ECR runtime AutoGluon/LightGBM + PyTorch CPU amd64 |
 | `stratus-automl` | UPDATE_COMPLETE | S3, DynamoDB/GSI/PITR, SQS/DLQ, ASG, IAM, CloudWatch, API Gateway, Cognito, ba Lambda |
 
 Không tạo CloudFront; frontend được Cloudflare phục vụ. Budget email chưa được cấu hình.
@@ -31,9 +31,9 @@ Không tạo CloudFront; frontend được Cloudflare phục vụ. Budget email 
 | ECR | `stratus-automl-registry-registry-ahcflaooa3yl` |
 | ASG | `stratus-automl-workers` |
 | Worker logs | `stratus-automl-WorkerLogs-mKkV8RjfFPUa` |
-| Inference instance | `i-0a09ff224b6517564` |
+| Inference instance | `i-08dc30f153baf8c02` |
 | Inference logs | `stratus-automl-InferenceLogs-St4PnloVNzIT` |
-| Runtime digest | `sha256:e74d9917f96cd970328624946b66a583b46f425d497b2179eba51fbe932bd111` |
+| Runtime digest | `sha256:928afc72e1f4ce0f313d6b6ce2ff397c3a11d3e310aafca63880e51728e233a5` |
 
 ## Cấu hình compute
 
@@ -53,8 +53,8 @@ với 512 MB; Predict chuyển tiếp request tới EC2 trong VPC, timeout HTTP 
 
 ## Bằng chứng kiểm thử
 
-- 41 tests Python, 18 tests frontend, TypeScript/Vite build, CloudFormation lint: pass.
-- GitHub backend/frontend CI và Cloudflare Workers Builds cho commit `07c1df3`: success.
+- 50 tests Python, 17 tests frontend, TypeScript/Vite build, CloudFormation lint: pass.
+- GitHub backend/frontend CI và Cloudflare Workers Builds cho commit `74af061`: success.
 - Production `/config.js` đã chứa đúng API/Cognito mới và `inferenceMode=ec2`, cache-control no-store; `/app` trả 200.
 - Màn hình khóa workspace đã kiểm tra bằng Chrome headless ở desktop và viewport 390 px, không có tràn ngang.
 - Cognito Hosted UI trả form đăng nhập; SRP login bằng tài khoản kiểm thử tạm thành công.
@@ -101,3 +101,37 @@ Dừng nhận tác vụ và đợi queue rỗng trước khi nâng cấp runtime
 
 Lần create đầu trên account mới thất bại vì memory Lambda; stack rollback và hai tài nguyên dữ liệu rỗng
 của lần thất bại đã được dọn sau khi xác minh không có dữ liệu. Các ID ở bảng trên là tài nguyên đang sử dụng.
+
+## Nâng cấp ảnh — 18:39 ngày 27/11/2026 (giờ Việt Nam)
+
+Backend code `71a08ce`, frontend `74af061`; CloudFormation UPDATE_COMPLETE, GitHub CI và
+Cloudflare Workers Builds đều success. Runtime digest và instance inference trong bảng trên đã cập nhật.
+Frontend production phục vụ assets `index-BGDuAjca.js` / `index-Btz2VGsq.css`; đã mở trực tiếp bằng
+Chrome để kiểm tra landing, bốn task đang hỗ trợ và khóa workspace khi chưa đăng nhập.
+
+Hai bài toán ảnh là **phân loại ảnh** và **phân đoạn ngữ nghĩa**, không có detection/instance segmentation.
+Xem [hướng dẫn ZIP, model, chỉ số và inference](image-workflows.md).
+
+Bốn lượt huấn luyện thật qua API có Cognito đã hoàn tất:
+
+| Model | Job | Endpoint | Inference lần đầu / lần tiếp (ms) |
+| --- | --- | --- | --- |
+| mobilenet-v3 | `adb641740ce0598c8e8f68e540795689` | `df1228d1912e42d7859833b54ae5bd61` | 2427 / 1110 |
+| resnet18 | `0e0de0bfdb48511ea80de4ee7713815e` | `1542f411d6dd45b586b51e6f031cf702` | 1766 / 1044 |
+| unet | `54f3204876d05d23925ce475fd377e7a` | `c16543a585ae4636b47689b86ff7e9ec` | 1166 / 1012 |
+| deeplab-mobile | `6d6ee0c9e687546ca9c272c06da1cc34` | `4a378369561240f3875479f88023e442` | 1682 / 1197 |
+
+Mỗi lượt đều pass: ZIP trực tiếp S3, kiểm tra ảnh/mặt nạ, snapshot bất biến, chuẩn bị dữ liệu,
+SQS/EC2 train, loss từng vòng, validation metrics, lưu/nạp model, deploy, inference lần đầu/lần tiếp,
+từ chối API key sai (401), ảnh sai (400). Các chỉ số chỉ trên tập val của dữ liệu tổng hợp rất nhỏ,
+không phải benchmark chất lượng thực tế hoặc đo latency dưới tải.
+
+- Upload/complete/preprocess hai bộ ảnh không tạo thêm job. Thử lại cùng `submission_id` trả cùng job.
+- Alarm SQS ghi nhận 4 messages, tự tăng Desired **0 → 1 lúc 18:36:32**, tạo worker `i-08c73ad287ddac684`.
+- Bốn job hoàn tất khoảng 18:38. Sau kiểm thử, queue visible/in-flight/delayed đều 0; không còn job đang chạy.
+- Tài khoản Cognito kiểm thử được tạo với SUPPRESS, không gửi email và đã xóa sau kiểm thử.
+- Sau khi xác nhận không có công việc, worker kiểm thử được đưa về 0; policy tự thu về 0 sau 15 phút idle
+  vẫn giữ nguyên. Máy inference riêng tiếp tục phục vụ endpoint.
+
+Không thay đổi tài khoản được mời, API URL, CORS hoặc Cognito callback. Model của digest cũ vẫn cần
+train/deploy lại theo cơ chế kiểm tra tương thích đã có; không xóa dữ liệu/model cũ.
