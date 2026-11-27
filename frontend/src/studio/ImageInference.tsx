@@ -104,7 +104,7 @@ export function ImageInference({ id, task, apiKey, inactive }: {
             </div>)}</div>
             <a className="st-btn secondary" href={`data:image/png;base64,${result.mask_base64}`} download="prediction-mask.png"><Download size={16} /> Tải mặt nạ mã lớp</a>
           </> : <>
-            <div className="st-image-label"><small>Nhãn dự đoán</small><strong>{result.label}</strong><span>{((result.confidence || 0) * 100).toFixed(1)}% xác suất</span></div>
+            <div className="st-predicted-label"><small>Nhãn dự đoán</small><strong>{result.label}</strong><span>{((result.confidence || 0) * 100).toFixed(1)}% xác suất</span></div>
             <div className="st-class-scores">{result.probabilities?.map((p) => <div key={p.label}>
               <span>{p.label}</span><strong>{(p.score * 100).toFixed(1)}%</strong><meter min="0" max="1" value={p.score} />
             </div>)}</div>

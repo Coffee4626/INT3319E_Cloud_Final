@@ -160,7 +160,7 @@ export function Wizard({
             count: p.rows,
             classes: p.classes?.length || 0,
             columns: p.columns.map((c) => c.name),
-            files: [],
+            files: p.format === "image-zip" ? [`Huấn luyện: ${p.splits?.train || 0} ảnh`, `Kiểm định: ${p.splits?.val || 0} ảnh`, `Các lớp: ${p.classes?.join(", ") || "—"}`] : [],
             size: p.size_bytes,
             sample: false,
             preview: p.preview.map((r) =>

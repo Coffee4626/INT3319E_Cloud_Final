@@ -259,3 +259,11 @@ Chỉ xóa `$STACK_NAME-network` nếu script đã tạo stack đó; không xóa
 - [SAM Cognito authorizer](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/serverless-controlling-access-to-apis-cognito-user-pool.html)
 - [API Gateway keys không thay thế authentication](https://docs.aws.amazon.com/apigateway/latest/developerguide/api-gateway-api-usage-plans.html)
 - [AutoGluon 1.4 validation leaderboard](https://auto.gluon.ai/1.4/api/autogluon.tabular.TabularPredictor.leaderboard.html)
+
+## Bài toán ảnh
+
+Phân loại ảnh và semantic segmentation dùng cùng S3, DynamoDB, SQS, ASG và EC2 inference.
+Không cần tạo thêm SageMaker, GPU hay public ingress. Build lại Docker image rồi deploy stack
+để bổ sung PyTorch CPU và trọng số pretrained. Giữ `INFERENCE_MODE=ec2` trên account hiện tại.
+Worker và inference mỗi máy 2 vCPU/8 GiB; dự phòng thêm 2 vCPU khi CloudFormation thay máy inference.
+Hướng dẫn dữ liệu, model và giới hạn: [image-workflows.md](image-workflows.md).
