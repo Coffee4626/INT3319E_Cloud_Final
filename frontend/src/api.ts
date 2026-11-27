@@ -270,6 +270,8 @@ export type Job = {
   image_uri: string;
 };
 export type Deployment = {
+  last_used_at?: number;
+  revoke_reason?: string;
   id: string;
   deployment_id: string;
   name: string;

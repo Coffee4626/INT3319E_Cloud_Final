@@ -63,7 +63,7 @@ docker buildx build --platform linux/amd64 --provenance=false --sbom=false -t "$
 digest=$(aws ecr describe-images --repository-name "${repo#*/}" --image-ids imageTag="$tag" --query 'imageDetails[0].imageDigest' --output text)
 aws cloudformation deploy --stack-name "$stack" --template-file infra/template.yaml \
   --capabilities CAPABILITY_IAM CAPABILITY_AUTO_EXPAND --no-fail-on-empty-changeset \
-  --parameter-overrides "ImageUri=$repo@$digest" "ControllerImageUri=" "VpcId=$VPC_ID" "SubnetIds=$SUBNET_IDS" \
+  --parameter-overrides "ImageUri=$repo@$digest" "ControllerImageUri=" "InferenceImageUri=" "VpcId=$VPC_ID" "SubnetIds=$SUBNET_IDS" \
   "AllowedOrigin=$origin" "WorkerInstanceType=${WORKER_INSTANCE_TYPE:-t3.large}" \
   "MaxWorkers=${MAX_WORKERS:-3}" "BudgetEmail=${BUDGET_EMAIL:-}" "EnableApi=$enable_api" \
   "ControlMemoryMB=${CONTROL_MEMORY_MB:-1024}" "PredictMemoryMB=${PREDICT_MEMORY_MB:-2048}" \

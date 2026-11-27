@@ -69,6 +69,9 @@ def main():
     import torch
     import torchvision  # noqa: F401
     torch.set_num_threads(2)
+    if os.getenv("INFERENCE_ACTIVITY_ENABLED") == "true":
+        from app.inference_lifecycle import activity
+        activity().boot()
     ThreadingHTTPServer(("0.0.0.0", 8080), Handler).serve_forever()
 
 

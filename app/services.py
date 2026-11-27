@@ -280,5 +280,17 @@ class PredictionService:
         task_name = deployment.get("task", "tabular")
         task = self.tasks.create(task_name)
         rows = task.validate_prediction(payload)
-        model = self.cache.get(task_name, deployment["model_key"], task)
-        return task.predict(model, rows)
+        tracker = None
+        if os.getenv("INFERENCE_ACTIVITY_ENABLED") == "true":
+            from app.inference_lifecycle import activity
+            tracker = activity()
+            token = tracker.begin(deployment_id)
+        try:
+            model = self.cache.get(task_name, deployment["model_key"], task)
+            return task.predict(model, rows)
+        finally:
+            if tracker:
+                try:
+                    tracker.finish(token)
+                except Exception:
+                    logger.exception("Could not release inference activity lease")

@@ -1358,6 +1358,7 @@ export function Inference({
         </div>
         <pre className="st-code">{curl}</pre>
       </div>
+      {!config.local && config.inferenceMode === "ec2" && <p className="st-muted">{deployment?.revoke_reason === "idle_3_days" ? "Endpoint đã tự thu hồi vì không được sử dụng trong 3 ngày. Bạn có thể triển khai lại model từ Kho mô hình." : "Endpoint tự thu hồi sau 3 ngày không có lượt dự đoán hợp lệ. Model vẫn được lưu để triển khai lại."}</p>}
       <div className="st-actions">
         {confirm ? (
           <>

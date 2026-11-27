@@ -19,6 +19,10 @@ Parameters:
     Type: String
     Default: ''
     Description: Optional controller-only image built from ImageUri without changing ML dependencies
+  InferenceImageUri:
+    Type: String
+    Default: ''
+    Description: Optional inference service code image built from the unchanged model ImageUri
   VpcId:
     Type: AWS::EC2::VPC::Id
   SubnetIds:
@@ -64,6 +68,7 @@ Parameters:
     Type: String
     Default: m7i-flex.large
 Conditions:
+  HasInferenceImage: !Not [!Equals [!Ref InferenceImageUri, '']]
   HasControllerImage: !Not [!Equals [!Ref ControllerImageUri, '']]
   ApiEnabled: !Equals [!Ref EnableApi, 'true']
   HasBudgetEmail: !Not [!Equals [!Ref BudgetEmail, '']]
@@ -399,6 +404,35 @@ Resources:
             Path: '/predict/{id}'
             Method: post
             Auth: {Authorizer: NONE}
+  InferenceLifecycle:
+    Condition: Ec2Inference
+    Type: AWS::Serverless::Function
+    Properties:
+      PackageType: Image
+      ImageUri: !If [HasInferenceImage, !Ref InferenceImageUri, !Ref ImageUri]
+      ImageConfig: {Command: [app.inference_lifecycle.handler]}
+      Timeout: 120
+      Environment:
+        Variables:
+          INFERENCE_INSTANCE_ID: !Ref InferenceInstance
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action: [dynamodb:GetItem, dynamodb:UpdateItem, dynamodb:Scan]
+              Resource: !GetAtt StateTable.Arn
+            - Effect: Allow
+              Action: ec2:StopInstances
+              Resource: !Sub 'arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:instance/${InferenceInstance}'
+      Events:
+        Hourly:
+          Type: Schedule
+          Properties: {Schedule: 'rate(1 hour)', Enabled: true}
+  InferenceLifecycleLogs:
+    Condition: Ec2Inference
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${InferenceLifecycle}'
+      RetentionInDays: 7
   DlqProcessor:
     Condition: ApiEnabled
     Type: AWS::Serverless::Function
@@ -495,7 +529,7 @@ Resources:
                 Action: s3:GetObject
                 Resource: !Sub '${DataBucket.Arn}/models/*'
               - Effect: Allow
-                Action: dynamodb:GetItem
+                Action: [dynamodb:GetItem, dynamodb:UpdateItem]
                 Resource: !GetAtt StateTable.Arn
               - Effect: Allow
                 Action: ecr:GetAuthorizationToken
@@ -534,32 +568,35 @@ Resources:
             SubnetId: !Select [0, !Ref SubnetIds]
             Groups: [!Ref InferenceSecurityGroup]
         UserData:
-          Fn::Base64: !Sub |
-            #!/bin/bash
-            set -euo pipefail
-            dnf install -y docker
-            systemctl enable --now docker
-            TOKEN=$(curl -fsS -X PUT -H 'X-aws-ec2-metadata-token-ttl-seconds: 21600' http://169.254.169.254/latest/api/token)
-            INSTANCE_ID=$(curl -fsS -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/instance-id)
-            aws ecr get-login-password --region ${AWS::Region} | docker login --username AWS --password-stdin ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com
-            docker pull ${ImageUri}
-            docker run -d --name automl-inference --restart always -p 8080:8080 \
-              --log-driver awslogs --log-opt awslogs-region=${AWS::Region} \
-              --log-opt awslogs-group=${InferenceLogs} \
-              -e AWS_DEFAULT_REGION=${AWS::Region} \
-              -e BUCKET_NAME=${DataBucket} -e TABLE_NAME=${StateTable} \
-              -e ALLOWED_ORIGIN=${AllowedOrigin} -e MODEL_IMAGE_URI=${ImageUri} \
-              -e OMP_NUM_THREADS=2 -e OPENBLAS_NUM_THREADS=2 \
-              --entrypoint python ${ImageUri} -m app.inference_server
-            for attempt in $(seq 1 120); do
-              if curl -fsS http://127.0.0.1:8080/health >/dev/null; then
-                aws cloudformation signal-resource --region ${AWS::Region} --stack-name ${AWS::StackName} --logical-resource-id InferenceInstance --unique-id "$INSTANCE_ID" --status SUCCESS
-                exit 0
-              fi
-              sleep 5
-            done
-            aws cloudformation signal-resource --region ${AWS::Region} --stack-name ${AWS::StackName} --logical-resource-id InferenceInstance --unique-id "$INSTANCE_ID" --status FAILURE
-            exit 1
+          Fn::Base64:
+            Fn::Sub:
+              - |
+                #!/bin/bash
+                set -euo pipefail
+                dnf install -y docker
+                systemctl enable --now docker
+                TOKEN=$(curl -fsS -X PUT -H 'X-aws-ec2-metadata-token-ttl-seconds: 21600' http://169.254.169.254/latest/api/token)
+                INSTANCE_ID=$(curl -fsS -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/instance-id)
+                aws ecr get-login-password --region ${AWS::Region} | docker login --username AWS --password-stdin ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com
+                docker pull ${ServiceImage}
+                docker run -d --name automl-inference --restart always -p 8080:8080 \
+                  --log-driver awslogs --log-opt awslogs-region=${AWS::Region} \
+                  --log-opt awslogs-group=${InferenceLogs} \
+                  -e AWS_DEFAULT_REGION=${AWS::Region} \
+                  -e BUCKET_NAME=${DataBucket} -e TABLE_NAME=${StateTable} \
+                  -e ALLOWED_ORIGIN=${AllowedOrigin} -e MODEL_IMAGE_URI=${ImageUri} \
+                  -e INFERENCE_ACTIVITY_ENABLED=true -e OMP_NUM_THREADS=2 -e OPENBLAS_NUM_THREADS=2 \
+                  --entrypoint python ${ServiceImage} -m app.inference_server
+                for attempt in $(seq 1 120); do
+                  if curl -fsS http://127.0.0.1:8080/health >/dev/null; then
+                    aws cloudformation signal-resource --region ${AWS::Region} --stack-name ${AWS::StackName} --logical-resource-id InferenceInstance --unique-id "$INSTANCE_ID" --status SUCCESS
+                    exit 0
+                  fi
+                  sleep 5
+                done
+                aws cloudformation signal-resource --region ${AWS::Region} --stack-name ${AWS::StackName} --logical-resource-id InferenceInstance --unique-id "$INSTANCE_ID" --status FAILURE
+                exit 1
+              - ServiceImage: !If [HasInferenceImage, !Ref InferenceImageUri, !Ref ImageUri]
   InferenceInstance:
     Condition: Ec2Inference
     Type: AWS::EC2::Instance

@@ -178,3 +178,26 @@ Start instance. Docker is enabled on boot and the inference container uses
 and API keys remain valid. Inference requests fail while the instance is stopped
 or starting; the first prediction must reload the model. S3 model artifacts remain.
 Stopped instances do not incur EC2 compute charges, but their EBS storage remains billed.
+
+## Automatic inference idle policy
+
+An hourly EventBridge rule invokes `InferenceLifecycle`. After a 72-hour initial
+grace period, ACTIVE endpoints with no accepted prediction for 72 hours become
+REVOKED with `revoke_reason=idle_3_days`. Never-used endpoints count from creation.
+Models in S3, jobs and deployment metadata are retained. Re-deploy the saved model
+to obtain a new endpoint/key. Calls with invalid keys or invalid payloads do not
+refresh activity. An accepted call refreshes activity even if model execution fails.
+
+Inference EC2 stops after 72 hours without accepted prediction activity, measured
+from the latest process startup when there have been no calls. A DynamoDB transaction
+updates endpoint and service activity before inference; conditional retirement and
+a STOPPING lock prevent racing new predictions. The scheduler has StopInstances
+permission only for this stack's inference instance and no S3 permissions. Checks
+run hourly, so actions normally occur between 72 and 73 hours after inactivity.
+
+To resume, use EC2 → select `stratus-automl-inference` → Start instance. Startup
+resets the service idle timer; it does not reactivate revoked endpoints. Frontend
+and training remain available while inference is stopped. EBS storage remains billed.
+The instance ID can change on service updates; find the machine by its Name tag.
+The optional `InferenceImageUri` updates service code from the unchanged base model
+image, preserving artifact compatibility; full deploys reset this override.
