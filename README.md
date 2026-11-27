@@ -5,6 +5,8 @@ Frontend React + TypeScript, backend Python, hạ tầng AWS khai báo bằng Cl
 
 **Trạng thái AWS đã triển khai:** [docs/deployment-status.md](docs/deployment-status.md).
 Storage, SQS, ECR và ASG đã có trên AWS; EC2 quota, Lambda và CloudFront đang chờ AWS Support mở quyền.
+Frontend đang dùng Cloudflare: xem **[cách nối backend AWS](docs/cloudflare-backend.md)**.
+Phương án này không cần CloudFront; vẫn cần gỡ chặn Lambda và quota EC2.
 
 ## Chạy ngay trên máy
 
@@ -14,8 +16,9 @@ Cần Docker Desktop/Engine + Compose v2. Trên Apple Silicon, image ML chạy `
 docker compose up --build -d --wait
 ```
 
-Mở **http://localhost:3000**. Chọn Thí nghiệm mới → Dùng mẫu → Áp dụng & tiếp tục → Bắt đầu huấn luyện.
-Sau khi hoàn thành, chọn **Triển khai endpoint → Thử dự đoán**. Có thể dùng CSV riêng.
+Mở **http://localhost:3000**. Chọn Tạo thí nghiệm → Phân loại dữ liệu bảng → LightGBM → Dùng dữ liệu mẫu,
+chọn cột `churn`, tiền xử lý rồi Bắt đầu huấn luyện.
+Sau khi hoàn thành, chọn **Triển khai mô hình → Chạy dự đoán**. Có thể dùng CSV riêng.
 
 - Frontend: http://localhost:3000
 - API: http://localhost:8000
@@ -142,6 +145,9 @@ npm run build
 
 ## Phạm vi và giới hạn
 
+- Tám bài toán có trong giao diện, nhưng bộ xử lý hiện chỉ huấn luyện/dự đoán dữ liệu bảng với LightGBM.
+  Các bài toán ảnh, NLP, chuỗi thời gian và mô hình khác chưa có bộ xử lý tương ứng.
+  Biểu đồ hạ tầng mô tả kiến trúc; số EC2/CPU/GPU trực tiếp chưa nối nguồn giám sát.
 - CSV UTF-8, tối đa 10 MB / 100.000 rows / 200 cột, header ≤128 ký tự; upload trực tiếp S3.
   API inline cũ (`POST /jobs` kèm `csv`) vẫn hỗ trợ, giới hạn 1 MB.
 - Tiền xử lý không fit mean/median/encoder trên toàn bộ dataset. AutoGluon xử lý feature trong train;

@@ -3,12 +3,18 @@
 Project **Cloud Computing Finals**, account `080665850368`, region **ap-southeast-2 (Sydney)**.
 Region đã được xác minh trong AWS Settings → Project → Additional info.
 
+**Đã kiểm tra lại ngày 27/11/2026:** Lambda `GetAccountSettings` vẫn bị từ chối,
+EC2 Standard quota vẫn 0 vCPU, `EnableApi=false`, ASG 0/0/2 và không có instance.
+Frontend hiện dùng Cloudflare Workers Builds; không cần chờ CloudFront để triển khai backend.
+Làm theo [hướng dẫn Cloudflare + AWS](cloudflare-backend.md), ưu tiên quy trình này thay cho
+phần publish CloudFront bên dưới.
+
 ## Phần đã chạy được
 
 - Frontend tại **http://localhost:3000**: landing, upload CSV, profile/preprocess, train,
   kết quả validation + test set riêng, deploy endpoint và inference playground.
 - Model AutoGluon/LightGBM thật, LocalStack cho S3/SQS/DynamoDB khi chạy local.
-- 32 tests pass; build frontend, CloudFormation lint và Lambda RIE cold/warm pass.
+- 35 tests Python pass; build frontend, CloudFormation lint và Lambda RIE cold/warm đã pass ở lần kiểm tra trước.
 - Classification và regression smoke pass, có test metrics từ 48/240 dòng holdout.
 
 ## Tài nguyên AWS thật đã tạo
