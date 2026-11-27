@@ -45,6 +45,6 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
       `window.STRATUS_CONFIG = ${JSON.stringify(config)};\n`);
     console.log("Đã tạo cấu hình kết nối AWS cho frontend.");
   } else {
-    console.log("Chưa đặt cấu hình AWS: kết nối local chỉ bật trên localhost.");
+    console.log("Dùng cấu hình public/config.js: localhost kết nối local, domain triển khai kết nối AWS.");
   }
 }

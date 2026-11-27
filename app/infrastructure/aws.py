@@ -23,9 +23,12 @@ LEASE_SECONDS = 3500
 
 @lru_cache
 def client(service):
-    options = {"endpoint_url": os.getenv("AWS_ENDPOINT_URL")}
+    options = {"endpoint_url": os.getenv("AWS_ENDPOINT_URL") or None}
     if service == "s3":
-        options["config"] = Config(signature_version="s3v4")
+        # Presigned POST must use the bucket's regional endpoint. The default
+        # global hostname can return a 307 for new buckets, breaking uploads.
+        options["config"] = Config(signature_version="s3v4", s3={
+            "addressing_style": "path" if options["endpoint_url"] else "virtual"})
     return boto3.client(service, **options)
 
 

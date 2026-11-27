@@ -612,11 +612,10 @@ function Infrastructure() {
           <div>
             <h3>Trạng thái cấu hình AWS</h3>
             <p>
-              ap-southeast-2 · Ghi nhận ngày 27/11/2026 · Không tự làm mới từ
-              AWS
+              ap-southeast-2 · Tài khoản 866160682379 · Ghi nhận ngày 27/11/2026 · Không tự làm mới từ AWS
             </p>
           </div>
-          <span className="st-badge amber">Tài khoản đang bị giới hạn</span>
+          <span className="st-badge green">Backend đã triển khai</span>
         </div>
         <div className="st-service-grid">
           {[
@@ -634,27 +633,27 @@ function Infrastructure() {
             ],
             [
               "EC2 Auto Scaling",
-              "Hạn mức chặn khởi tạo máy",
-              "Nhóm máy: tối thiểu 0 / mong muốn 0 / tối đa 2. Hạn mức vCPU tiêu chuẩn = 0.",
-              "amber",
+              "Co giãn theo SQS",
+              "Từ 0 đến 2 máy m7i-flex.large, mỗi máy 2 vCPU và 8 GB RAM. Thu về 0 khi hàng đợi rỗng đủ 15 phút.",
+              "green",
             ],
             [
               "Lambda",
-              "Từ chối truy cập",
-              "CreateFunction, ListFunctions và GetAccountSettings bị từ chối.",
-              "red",
+              "Đã tạo",
+              "Điều khiển, dự đoán và xử lý hàng đợi lỗi. Mỗi hàm dùng 512 MB RAM theo giới hạn tài khoản.",
+              "green",
             ],
             [
-              "CloudFront",
-              "Chờ xác minh",
-              "Tạo bản phân phối bị chặn do tài khoản chưa được xác minh.",
-              "red",
+              "Cloudflare",
+              "Đã triển khai",
+              "Frontend chạy trên int3319e-cloud-final.binhyb2.workers.dev và kết nối API AWS qua HTTPS.",
+              "green",
             ],
             [
               "API + Cognito",
-              "Chưa bật",
-              "API bị tắt trong cấu hình hạ tầng do phụ thuộc Lambda.",
-              "amber",
+              "Đã bật",
+              "API Gateway bảo vệ các thao tác quản lý bằng Cognito. Đăng nhập dùng mã ủy quyền và PKCE.",
+              "green",
             ],
           ].map(([name, state, desc, color]) => (
             <div key={name}>
@@ -666,7 +665,7 @@ function Infrastructure() {
           ))}
         </div>
         <p className="st-muted">
-          Tài nguyên tính toán hiện tại dùng t3.large. Các tác vụ thị giác máy tính cần môi trường chạy GPU và
+          Tài nguyên huấn luyện dùng m7i-flex.large. Các tác vụ thị giác máy tính cần môi trường chạy GPU và
           hạn mức phù hợp trước khi bắt đầu huấn luyện.
         </p>
       </div>

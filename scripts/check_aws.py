@@ -20,8 +20,9 @@ try:
 except (RuntimeError, OSError) as exc:
     sys.exit(str(exc))
 try:
-    aws("lambda", "get-account-settings")
-    print("Lambda: accessible")
+    limits = aws("lambda", "get-account-settings")["AccountLimit"]
+    print(f"Lambda: accessible; concurrency quota = {limits['ConcurrentExecutions']}")
+    print("Lambda memory limits are not exposed by GetAccountSettings; creation must still be checked.")
 except RuntimeError as exc:
     failures.append("Lambda: " + str(exc))
 try:
@@ -36,5 +37,5 @@ except (RuntimeError, KeyError, ValueError) as exc:
     failures.append("EC2 readiness: " + str(exc))
 for failure in failures:
     print("BLOCKED:", failure, file=sys.stderr)
-print("CloudFront account verification and actual EC2 launch still require deployment checks.")
+print("Actual EC2 launch and Lambda creation still require deployment checks. CloudFront is optional with external frontend hosting.")
 sys.exit(1 if failures else 0)

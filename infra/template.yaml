@@ -39,6 +39,18 @@ Parameters:
     Type: String
     Default: ''
     Description: Optional email for monthly budget alert
+  ControlMemoryMB:
+    Type: Number
+    Default: 1024
+    MinValue: 128
+    MaxValue: 10240
+    Description: Memory for controller and DLQ Lambda functions; new accounts may allow only 512 MB
+  PredictMemoryMB:
+    Type: Number
+    Default: 2048
+    MinValue: 128
+    MaxValue: 10240
+    Description: Inference Lambda memory; fit this to the account quota and model size
 Conditions:
   ApiEnabled: !Equals [!Ref EnableApi, 'true']
   HasBudgetEmail: !Not [!Equals [!Ref BudgetEmail, '']]
@@ -46,7 +58,7 @@ Globals:
   Function:
     Architectures: [x86_64]
     Timeout: 28
-    MemorySize: 1024
+    MemorySize: !Ref ControlMemoryMB
     Environment:
       Variables:
         BUCKET_NAME: !Ref DataBucket
@@ -269,7 +281,7 @@ Resources:
       PackageType: Image
       ImageUri: !Ref ImageUri
       ImageConfig: {Command: [app.predict.handler]}
-      MemorySize: 2048
+      MemorySize: !Ref PredictMemoryMB
       EphemeralStorage: {Size: 2048}
       Policies:
         - Statement:

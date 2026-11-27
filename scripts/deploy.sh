@@ -49,7 +49,8 @@ aws cloudformation deploy --stack-name "$stack" --template-file infra/template.y
   --capabilities CAPABILITY_IAM CAPABILITY_AUTO_EXPAND --no-fail-on-empty-changeset \
   --parameter-overrides "ImageUri=$repo@$digest" "VpcId=$VPC_ID" "SubnetIds=$SUBNET_IDS" \
   "AllowedOrigin=$origin" "WorkerInstanceType=${WORKER_INSTANCE_TYPE:-t3.large}" \
-  "MaxWorkers=${MAX_WORKERS:-2}" "BudgetEmail=${BUDGET_EMAIL:-}" "EnableApi=$enable_api"
+  "MaxWorkers=${MAX_WORKERS:-2}" "BudgetEmail=${BUDGET_EMAIL:-}" "EnableApi=$enable_api" \
+  "ControlMemoryMB=${CONTROL_MEMORY_MB:-1024}" "PredictMemoryMB=${PREDICT_MEMORY_MB:-2048}"
 if [[ "$enable_api" == false ]]; then
   aws cloudformation describe-stacks --stack-name "$stack" --query 'Stacks[0].Outputs' --output table
   echo 'Storage, queue and worker infrastructure deployed. API/Cognito/Lambda are disabled; enable after account restrictions are resolved.'
