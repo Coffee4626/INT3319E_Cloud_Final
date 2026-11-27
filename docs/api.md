@@ -193,3 +193,12 @@ không phải kiểm tra toàn bộ EC2/S3/SQS đang healthy.
 ## API ảnh
 
 Upload ZIP, cấu hình model, đánh giá và payload inference ảnh: [image-workflows.md](image-workflows.md).
+
+## GET /compute (AWS)
+
+Requires a Cognito ID token. Returns `observed_at` (Unix seconds),
+`workers: {total, desired, maximum, in_service, starting}` from the training Auto Scaling
+group and `queue: {waiting, processing}` from SQS approximate message counts.
+Counts are shared infrastructure totals, not per-user or per-job progress.
+InService means EC2 is up; it does not guarantee the worker container is ready.
+Responses use `Cache-Control: no-store`. Monitoring failures return 503 rather than zeroes.

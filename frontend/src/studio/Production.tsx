@@ -31,6 +31,8 @@ import {
 import { Architecture, DataEvolution, LineChart, TaskArt } from "./Visuals";
 import { TASKS, taskById } from "./catalog";
 import { ImageInference } from "./ImageInference";
+import { ComputePanel } from "./ComputePanel";
+import { formatMetric } from "./metrics";
 import { downloadText } from "./data";
 const metricName = (name?: string) =>
   name
@@ -418,7 +420,7 @@ export function Registry({ go }: { go: (p: string) => void }) {
                 </p>
                 <div className="st-registry-score">
                   <span>{j.metrics?.eval_metric || "Điểm kiểm định"}</span>
-                  <strong>{m.score_val?.toFixed(4) ?? "—"}</strong>
+                  <strong>{formatMetric(j.metrics?.eval_metric, m.score_val)}</strong>
                 </div>
                 <small className="st-muted">{j.name}</small>
                 <div className="st-actions">
@@ -678,14 +680,14 @@ export function Experiment({
                   primary.map(([name, value]) => (
                     <div className="st-metric" key={name}>
                       <span>{metricName(name)}</span>
-                      <strong>{value.toFixed(4)}</strong>
+                      <strong>{formatMetric(name, value)}</strong>
                       <small>{vision ? "Tập kiểm định val" : "Tập kiểm tra"} · mô hình tốt nhất</small>
                     </div>
                   ))
                 ) : (
                   <div className="st-metric">
                     <span>Điểm kiểm định</span>
-                    <strong>{model?.score_val?.toFixed(4) || "—"}</strong>
+                    <strong>{formatMetric(job.metrics?.eval_metric, model?.score_val)}</strong>
                     <small>{metricName(job.metrics?.eval_metric)}</small>
                   </div>
                 )}
@@ -741,7 +743,7 @@ export function Experiment({
                     </div>
                     <div>
                       <dt>Điểm kiểm định</dt>
-                      <dd>{model?.score_val?.toFixed(4) ?? "—"}</dd>
+                      <dd>{formatMetric(job.metrics?.eval_metric, model?.score_val)}</dd>
                     </div>
                     <div>
                       <dt>Thời gian huấn luyện</dt>
@@ -833,7 +835,7 @@ export function Experiment({
                               <span className="st-small-tag">Mô hình tốt nhất</span>
                             )}
                           </td>
-                          <td>{m.score_val?.toFixed(4)}</td>
+                          <td>{formatMetric(job.metrics?.eval_metric, m.score_val)}</td>
                           <td>{m.fit_time.toFixed(2)}s</td>
                           <td>{m.pred_time_val.toFixed(4)}s</td>
                           <td>
@@ -857,60 +859,7 @@ export function Experiment({
           )}
         </>
       )}
-      {tab === "compute" && (
-        <>
-          <div className="st-section-heading">
-            <div>
-              <h2>Tài nguyên tính toán theo nhu cầu.</h2>
-              <p>
-                Hàng đợi điều khiển co giãn; máy xử lý đang huấn luyện được bảo vệ khỏi
-                giảm số máy.
-              </p>
-            </div>
-          </div>
-          <div className="st-metric-grid">
-            <div className="st-metric">
-              <span>Trạng thái tác vụ</span>
-              <strong className="text">{statusName(job.status)}</strong>
-              <small>Đọc từ trạng thái tác vụ</small>
-            </div>
-            <div className="st-metric">
-              <span>Máy EC2 đang hoạt động</span>
-              <strong>—</strong>
-              <small>Chưa kết nối dữ liệu giám sát EC2</small>
-            </div>
-            <div className="st-metric">
-              <span>Chính sách co giãn</span>
-              <strong className="text">Độ dài hàng đợi SQS</strong>
-              <small>Tăng từ 0 máy theo hàng đợi</small>
-            </div>
-            <div className="st-metric">
-              <span>Môi trường xử lý</span>
-              <strong className="text">
-                {config.local ? "Máy xử lý Docker" : "EC2 Auto Scaling"}
-              </strong>
-              <small>{config.region}</small>
-            </div>
-          </div>
-          <div className="st-panel">
-            <h3>
-              <Server size={19} /> Vòng đời máy xử lý
-            </h3>
-            <div className="st-lifecycle">
-              <span>Tác vụ vào SQS</span>
-              <span>Tăng số máy</span>
-              <span>Máy xử lý nhận tác vụ</span>
-              <span>Huấn luyện & đánh giá</span>
-              <span>Lưu gói mô hình</span>
-              <span>Giảm máy khi nhàn rỗi</span>
-            </div>
-            <p className="st-muted">
-              Sơ đồ mô tả chính sách vận hành. Số máy và CPU/GPU chỉ hiển
-              thị khi có dữ liệu giám sát từ hạ tầng.
-            </p>
-          </div>
-        </>
-      )}
+      {tab === "compute" && <ComputePanel jobStatus={job.status} />}
       {tab === "data" && (
         <>
           <DataEvolution taskId={taskId} stage={done ? 2 : 1} />

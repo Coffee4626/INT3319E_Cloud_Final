@@ -3492,3 +3492,7 @@ body {
 .st-predicted-label strong { font-size:32px; color:#142b50; overflow-wrap:anywhere; }
 .st-predicted-label span { color:#356ed5; }
 .st-image-json { max-height:520px; overflow:auto; word-break:break-all; }
+
+.st-metric-grid.st-compute-metrics {
+  grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
+}

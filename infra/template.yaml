@@ -283,6 +283,67 @@ Resources:
         Health:
           Type: Api
           Properties: {RestApiId: !Ref Api, Path: /health, Method: get}
+  ComputeStatus:
+    Condition: ApiEnabled
+    Type: AWS::Serverless::Function
+    Properties:
+      Runtime: python3.12
+      Handler: index.handler
+      Timeout: 10
+      Environment:
+        Variables:
+          WORKER_GROUP: !Ref Workers
+          QUEUE_URL: !Ref JobQueue
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action: autoscaling:DescribeAutoScalingGroups
+              Resource: '*'
+            - Effect: Allow
+              Action: sqs:GetQueueAttributes
+              Resource: !GetAtt JobQueue.Arn
+      InlineCode: |
+        import json
+        import logging
+        import os
+        import time
+        import boto3
+        from botocore.config import Config
+
+        def handler(event, context):
+            headers = {"Content-Type": "application/json", "Cache-Control": "no-store",
+                       "Access-Control-Allow-Origin": os.environ["ALLOWED_ORIGIN"], "Vary": "Origin"}
+            def reply(code, data):
+                return {"statusCode": code, "headers": headers, "body": json.dumps(data)}
+            claims = event.get("requestContext", {}).get("authorizer", {}).get("claims", {})
+            if not claims.get("sub"):
+                return reply(401, {"error": "Sign in to continue"})
+            try:
+                options = Config(connect_timeout=2, read_timeout=2, retries={"total_max_attempts": 1})
+                groups = boto3.client("autoscaling", config=options).describe_auto_scaling_groups(
+                    AutoScalingGroupNames=[os.environ["WORKER_GROUP"]])["AutoScalingGroups"]
+                if not groups:
+                    return reply(503, {"error": "Worker group unavailable"})
+                group = groups[0]
+                instances = group["Instances"]
+                queue = boto3.client("sqs", config=options).get_queue_attributes(
+                    QueueUrl=os.environ["QUEUE_URL"], AttributeNames=[
+                        "ApproximateNumberOfMessages", "ApproximateNumberOfMessagesNotVisible"])["Attributes"]
+                return reply(200, {
+                    "observed_at": int(time.time()),
+                    "workers": {"total": len(instances), "desired": group["DesiredCapacity"],
+                        "maximum": group["MaxSize"],
+                        "in_service": sum(i["LifecycleState"] == "InService" for i in instances),
+                        "starting": sum(i["LifecycleState"].startswith("Pending") for i in instances)},
+                    "queue": {"waiting": int(queue["ApproximateNumberOfMessages"]),
+                              "processing": int(queue["ApproximateNumberOfMessagesNotVisible"])}})
+            except Exception:
+                logging.exception("Compute status read failed")
+                return reply(503, {"error": "Compute status temporarily unavailable"})
+      Events:
+        Compute:
+          Type: Api
+          Properties: {RestApiId: !Ref Api, Path: /compute, Method: get}
   Predict:
     Condition: ApiEnabled
     Type: AWS::Serverless::Function

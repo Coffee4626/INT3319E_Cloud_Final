@@ -22,9 +22,13 @@ semantic segmentation, tabular classification and tabular regression.
   overlays with opacity control, class coverage and download of the class-ID PNG.
 - Image epoch loss and validation metrics are measured on real data. The supplied val split selects
   checkpoints and is labeled as validation, not an independent test split.
-- Architecture diagrams describe the pipeline. EC2 worker counts remain unavailable
-  without telemetry; job status is never used to invent instance counts. The AWS
-  setup snapshot is dated, not a live account monitor.
+- Architecture diagrams describe the pipeline. The resources tab polls authenticated
+  `GET /compute` every 10 seconds, including after job completion, for actual ASG
+  instance counts and approximate SQS waiting/processing counts. Failed refreshes
+  retain the previous values with a stale-data warning. Counts cover shared training
+  workers, not inference instances. The infrastructure setup snapshot remains dated.
+- Ratio metrics (accuracy, F1, IoU, Dice, precision/recall and AUC) display as percentages;
+  loss and regression errors retain their original numeric scale. Stored values are unchanged.
 - Learning curves are saved from real LightGBM boosting rounds on new runs (log loss
   for classification and RMSE for regression). Up to 120 actual points are retained
   with original round indices to bound DynamoDB record size. Older jobs without
