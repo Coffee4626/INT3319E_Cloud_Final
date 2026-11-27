@@ -142,7 +142,7 @@ npm run build
   API inline cũ (`POST /jobs` kèm `csv`) vẫn hỗ trợ, giới hạn 1 MB.
 - Tiền xử lý không fit mean/median/encoder trên toàn bộ dataset. AutoGluon xử lý feature trong train;
   validation score chưa thay thế đánh giá bằng test set độc lập.
-- Model image là **runtime dùng chung** cho worker và Lambda theo sơ đồ. Artifact model nằm ở S3;
+- Model image là runtime dùng chung cho worker và Lambda theo sơ đồ. Artifact model nằm ở S3;
   deploy không build một Docker image riêng cho từng model. Chỉ model từ worker của hệ thống mới được load.
 - `time_limit` 10–600 giây là ngân sách fit của AutoGluon, không phải hard timeout cho toàn bộ job.
 - Lambda inference 28 giây, 2 GB RAM / `/tmp`. Model giới hạn 1 GB uncompressed, nhưng model nhỏ hơn
