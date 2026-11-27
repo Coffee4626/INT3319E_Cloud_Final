@@ -1,3 +1,4 @@
+import { scanCsv } from "./csvStream.ts";
 import type { TaskSpec } from "./catalog";
 export type DataSummary = {
   name: string;
@@ -65,58 +66,34 @@ export async function inspectFile(
     throw new Error(
       `Bài toán này cần tệp ${task.accept.toUpperCase()}. ${task.format}.`,
     );
-  if (file.size > (isZip ? 200_000_000 : 10_000_000))
-    throw new Error(`Dung lượng tối đa ${isZip ? "200" : "10"} MB.`);
+  if (file.size > 200_000_000)
+    throw new Error("Dung lượng tối đa 200 MB.");
   if (!file.size) throw new Error("Tệp đang trống.");
   if (!isZip) {
-    const rows = parseCsv((await file.text()).replace(/^\uFEFF/, ""));
-    const columns = (rows[0] || []).map((c) => c.trim());
-    if (columns.length > 200) throw new Error("CSV tối đa 200 cột.");
-    if (
-      columns.length < 2 ||
-      new Set(columns).size !== columns.length ||
-      columns.some((x) => !x)
-    )
-      throw new Error("CSV cần ít nhất 2 cột với tên cột không trùng.");
-    if (rows.length < 3) throw new Error("CSV cần ít nhất 2 dòng dữ liệu.");
-    if (rows.length > 100001) throw new Error("CSV tối đa 100.000 dòng.");
-    if (rows.some((r) => r.length !== columns.length))
-      throw new Error("Số ô trong các dòng CSV không khớp tên cột.");
-    const required =
-      task.id === "text-classification"
-        ? ["text", "label"]
-        : task.id === "forecasting"
-          ? ["timestamp", "target"]
-          : [];
-    if (required.some((c) => !columns.includes(c)))
-      throw new Error(`CSV phải có các cột: ${required.join(", ")}.`);
-    if (task.id === "forecasting") {
-      let last = -Infinity;
-      for (const row of rows.slice(1)) {
-        const time = Date.parse(row[columns.indexOf("timestamp")]);
-        const raw = row[columns.indexOf("target")];
-        if (
-          !Number.isFinite(time) ||
-          time <= last ||
-          !raw.trim() ||
-          !Number.isFinite(Number(raw))
-        )
-          throw new Error(
-            "Cột timestamp phải chứa thời gian hợp lệ, tăng dần và không trùng; cột target phải là số.",
-          );
-        last = time;
+    let columns: string[] = [], count = 0, lastTime = -Infinity;
+    const preview: string[][] = [];
+    await scanCsv(file, row => {
+      if (!columns.length) {
+        columns = row.map(c => c.trim());
+        if (columns.length < 2 || new Set(columns).size !== columns.length || columns.some(c => !c))
+          throw new Error("CSV cần ít nhất 2 cột với tên cột không trùng.");
+        const required = task.id === "text-classification" ? ["text", "label"] : task.id === "forecasting" ? ["timestamp", "target"] : [];
+        if (required.some(c => !columns.includes(c))) throw new Error(`CSV phải có các cột: ${required.join(", ")}.`);
+        return;
       }
-    }
-    return {
-      name: file.name,
-      count: rows.length - 1,
-      classes: new Set(rows.slice(1).map((r) => r.at(-1))).size,
-      columns,
-      files: [],
-      size: file.size,
-      sample: false,
-      preview: rows.slice(1, 6),
-    };
+      if (row.length !== columns.length) throw new Error("Số ô trong các dòng CSV không khớp tên cột.");
+      if (task.id === "forecasting") {
+        const time = Date.parse(row[columns.indexOf("timestamp")]);
+        const value = row[columns.indexOf("target")];
+        if (!Number.isFinite(time) || time <= lastTime || !value.trim() || !Number.isFinite(Number(value)))
+          throw new Error("Cột timestamp phải tăng dần; target phải là số.");
+        lastTime = time;
+      }
+      if (++count > 100000) throw new Error("CSV tối đa 100.000 dòng.");
+      if (preview.length < 5) preview.push(row.map(c => c.slice(0, 64)));
+    });
+    if (count < 2) throw new Error("CSV cần ít nhất 2 dòng dữ liệu.");
+    return { name: file.name, count, classes: 0, columns, files: [], size: file.size, sample: false, preview };
   }
   const buffer = await file.arrayBuffer(),
     view = new DataView(buffer);

@@ -136,3 +136,26 @@ test("Image ZIP size gate accepts under 200 MB and rejects above it", async () =
   Object.defineProperty(tooLarge, 'size', { value: 200_000_001 });
   await assert.rejects(inspectFile(tooLarge, taskById('image-classification')), /200 MB/);
 });
+
+test("CSV accepts 200 MB size gate and streams without reading whole text", async () => {
+  const task = taskById("classification");
+  const good = file('x,y\n1,yes\n2,no\n');
+  Object.defineProperty(good, 'size', {value: 200_000_000});
+  good.text = async () => { throw Error('Must stream'); };
+  assert.equal((await inspectFile(good, task)).count, 2);
+  const large = file('x,y\n1,yes\n2,no\n');
+  Object.defineProperty(large, 'size', {value: 200_000_001});
+  await assert.rejects(inspectFile(large, task), /200 MB/);
+});
+
+test("Streaming CSV handles UTF-8 and escaped quotes across single-byte chunks", async () => {
+  const {scanCsv} = await import('../src/studio/csvStream.ts');
+  const bytes = new TextEncoder().encode('\ufeffx,y\r\n"mèo, \"\"đen\"\"",yes\r\n"hai\ndòng",no');
+  let offset = 0;
+  const input = {stream: () => new ReadableStream({pull(c) { if (offset < bytes.length) c.enqueue(bytes.slice(offset, ++offset)); else c.close(); }})};
+  const rows = [];
+  await scanCsv(input, row => rows.push(row));
+  assert.deepEqual(rows, [['x','y'], ['mèo, "đen"','yes'], ['hai\ndòng','no']]);
+  for (const invalid of ['x,y\n"open,a', 'x,y\n"closed"bad,a', 'x,y\na"b,a'])
+    await assert.rejects(scanCsv(file(invalid), () => {}));
+});

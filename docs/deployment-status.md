@@ -151,3 +151,13 @@ Bộ dữ liệu có sẵn cho người dùng tại `/datasets/shapes-classifica
 `/datasets/shapes-segmentation.zip`: mỗi bộ 180 train + 60 val, ảnh hình học tổng hợp 128 px.
 Các ảnh `try-circle.png`, `try-square.png`, `try-triangle.png` lấy từ val để thử inference.
 Có script tái tạo `scripts/create_image_examples.py`; không phải benchmark chất lượng thực tế.
+
+## CSV 200 MB
+
+CSV now accepts 200,000,000 bytes end to end. The existing 100,000-row / 200-column
+limits remain. The browser streams inspection; the controller streams profiling and
+preparation from temporary files. CSVs over 10 MB use background Lambda invocation
+and dataset status polling, avoiding API Gateway request timeouts. These operations
+do not queue training jobs. A controller-only image built with `Dockerfile.controller`
+from the existing immutable model image preserves trained-model compatibility and
+leaves worker/inference EC2 images unchanged. Full deployments clear the controller override.

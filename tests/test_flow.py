@@ -330,5 +330,53 @@ class FlowTests(unittest.TestCase):
             self.assertEqual(self.call(path, payload)[0], 400, payload)
 
 
-if __name__ == "__main__":
-    unittest.main()
+    def test_large_csv_background_complete_preprocess_and_owner_isolation(self):
+        from app import dataset_background
+        _, ticket = self.call('/uploads', {'name': 'large.csv', 'task': 'classification'}, owner='alice')
+        dataset_id = ticket['dataset_id']
+        item = runtime.dataset_service('alice').get(dataset_id)
+        text = 'x,y\n' + ''.join(('v' * 6000) + f',{i%2}\n' for i in range(2000))
+        client('s3').put_object(Bucket='automl-test', Key=item['upload_key'], Body=text.encode())
+        events = []
+        original_client = client
+        invoke = MagicMock()
+        invoke.invoke.side_effect = lambda **kwargs: events.append(json.loads(kwargs['Payload'])) or {'StatusCode': 202}
+        def sdk(name): return invoke if name == 'lambda' else original_client(name)
+        # Moto's multipart CRC implementation disagrees with botocore; use single PUT in this fixture.
+        def save_file(store, key, path):
+            store.s3.put_object(Bucket=store.bucket, Key=key, Body=path.read_bytes())
+        with patch.dict(os.environ, {'AWS_LAMBDA_FUNCTION_NAME': 'test-controller'}), patch('app.dataset_background.client', sdk), patch('app.infrastructure.aws.S3ArtifactStore.save_file', save_file):
+            status, pending = self.call(f'/datasets/{dataset_id}/complete', owner='alice')
+            self.assertEqual(pending['status'], 'PROCESSING')
+            self.assertEqual(self.call(f'/datasets/{dataset_id}', method='GET', owner='bob')[0], 404)
+            self.assertEqual(self.call(f'/datasets/{dataset_id}', method='GET', owner='alice')[0], 200)
+            self.assertEqual(len(events), 1)
+            controller.handler(events.pop(), None)
+            ready = self.call(f'/datasets/{dataset_id}', method='GET', owner='alice')[1]
+            self.assertEqual(ready['status'], 'READY')
+            self.assertEqual(ready['profile']['rows'], 2000)
+            _, pending = self.call(f'/datasets/{dataset_id}/preprocess', {'target': 'y'}, owner='alice')
+            self.assertEqual(pending['status'], 'PROCESSING')
+            event = events.pop()
+            controller.handler(event, None)
+            prepared = runtime.dataset_service('alice').get(pending['dataset_id'])
+            self.assertTrue(prepared['prepared'])
+            self.assertEqual(prepared['profile']['rows'], 2)
+            controller.handler(event, None)  # Duplicate invocation has no effect.
+        self.assertNotIn('Messages', client('sqs').receive_message(QueueUrl=os.environ['QUEUE_URL']))
+        from decimal import Decimal
+        expired = dataset_background.expire({'status': 'PROCESSING', 'processing_started': Decimal(1)})
+        self.assertEqual(expired['status'], 'FAILED')
+
+    def test_large_prepared_submission_does_not_load_csv_in_controller(self):
+        service = runtime.dataset_service('alice')
+        service.repository.put_record({'id': 'dataset#large', 'dataset_id': 'large', 'owner': 'alice',
+            'kind': 'dataset', 'name': 'large.csv', 'status': 'READY', 'prepared': True,
+            'task': 'classification', 'target': 'y', 'dataset_key': 'datasets/large.csv',
+            'profile': {'size_bytes': 200_000_000, 'columns': [
+                {'name': 'x', 'type': 'numeric', 'missing': 0, 'unique': 100},
+                {'name': 'y', 'type': 'categorical', 'missing': 0, 'unique': 2}]}})
+        with patch('app.infrastructure.aws.S3ArtifactStore.read_csv', side_effect=AssertionError('Must not load large CSV')):
+            status, job = self.call('/jobs', {'dataset_id': 'large', 'task': 'classification', 'target': 'y'}, owner='alice')
+            self.assertEqual(status, 202)
+            self.assertEqual(job['status'], 'QUEUED')

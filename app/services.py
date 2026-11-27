@@ -36,6 +36,7 @@ class JobService:
             except (ValueError, AttributeError, TypeError) as exc:
                 raise ValueError("submission_id must be a UUID") from exc
         dataset = None
+        large_csv = False
         if payload.get("dataset_id"):
             dataset = DatasetService(self.repository, self.artifacts, self.owner).get(payload["dataset_id"])
             if dataset["status"] != "READY" or not dataset.get("prepared"):
@@ -43,14 +44,26 @@ class JobService:
             vision = dataset.get("task") in VISION_TASKS
             if vision != (payload.get("task") in VISION_TASKS) or (vision and dataset["task"] != payload["task"]):
                 raise ValueError("Dataset task does not match the requested training task")
-            payload = {**payload, "csv": "" if vision else self.artifacts.read_csv(dataset["dataset_key"], MAX_BYTES),
+            large_csv = not vision and dataset["profile"]["size_bytes"] > 10_000_000
+            payload = {**payload, "csv": "" if vision or large_csv else self.artifacts.read_csv(dataset["dataset_key"], MAX_BYTES),
                        "target": dataset["target"]}
         elif isinstance(payload.get("csv"), str) and len(payload["csv"].encode()) > 1_000_000:
             raise ValueError("Inline CSV limit: 1 MB; use /uploads for larger datasets")
         request = TrainingRequest.parse(payload)
         if request.task in VISION_TASKS and not dataset:
             raise ValueError("Image training requires a validated, prepared ZIP dataset")
-        self.tasks.create(request.task).validate_training(request)
+        task = self.tasks.create(request.task)
+        if large_csv:
+            columns = dataset["profile"]["columns"]
+            target = next((c for c in columns if c["name"] == request.target), None)
+            if not target or target["missing"]:
+                raise ValueError("Target values must not be empty")
+            if request.task == "classification" and target["unique"] < 2:
+                raise ValueError("Classification needs at least two distinct target classes")
+            if request.task == "regression" and target["type"] != "numeric":
+                raise ValueError("Regression target values must be finite numbers")
+        else:
+            task.validate_training(request)
         settings = training_config(request.task, request.config) if request.task in VISION_TASKS else {}
         job_id = uuid.uuid5(uuid.NAMESPACE_URL, self.owner + ":" + submission_id).hex if submission_id else uuid.uuid4().hex
         name = payload.get("name") or (dataset["name"] if dataset else "Untitled experiment")

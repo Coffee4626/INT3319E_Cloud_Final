@@ -47,6 +47,7 @@ import {
   signedIn,
   signOut,
   upload,
+  waitForDataset,
   type Dataset,
   type Deployment,
   type DeployResult,
@@ -779,7 +780,7 @@ function Overview({ go }: { go: (p: string) => void }) {
             </span>
             <div>
               <strong>Tải dữ liệu của bạn</strong>
-              <p>CSV tối đa 10 MB</p>
+              <p>CSV tối đa 200 MB</p>
             </div>
           </div>
           <div className="guide-item">
@@ -1174,7 +1175,7 @@ function NewExperiment({ go }: { go: (p: string) => void }) {
           drop_missing_target: missing,
         },
       );
-      setPreparedDataset(d);
+      setPreparedDataset(await waitForDataset(d));
       setStep(2);
     } catch (e) {
       setError((e as Error).message);
@@ -1275,7 +1276,7 @@ function NewExperiment({ go }: { go: (p: string) => void }) {
                 >
                   Chọn file
                 </Button>
-                <small>UTF-8 · Tối đa 10 MB · 100.000 dòng</small>
+                <small>UTF-8 · Tối đa 200 MB · 100.000 dòng</small>
               </div>
               <div className="sample-dataset">
                 <span className="table-icon">
@@ -1360,7 +1361,7 @@ function NewExperiment({ go }: { go: (p: string) => void }) {
                           <td className={c.missing ? "warning-text" : ""}>
                             {c.missing}
                           </td>
-                          <td>{c.unique}</td>
+                          <td>{c.unique_lower_bound ? "≥ " : ""}{c.unique}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -2321,7 +2322,7 @@ function Settings() {
           <dl>
             <div>
               <dt>Bộ dữ liệu</dt>
-              <dd>10 MB · 100.000 dòng · 200 cột</dd>
+              <dd>200 MB · 100.000 dòng · 200 cột</dd>
             </div>
             <div>
               <dt>Huấn luyện</dt>

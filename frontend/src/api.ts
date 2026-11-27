@@ -198,6 +198,7 @@ export type Column = {
   type: string;
   missing: number;
   unique: number;
+  unique_lower_bound?: boolean;
   examples: string[];
 };
 export type Profile = {
@@ -220,6 +221,7 @@ export type Dataset = {
   status: string;
   profile?: Profile;
   prepared: boolean;
+  error?: string;
   target?: string;
   created_at: number;
   report?: Record<string, number | string[]>;
@@ -289,7 +291,7 @@ export type DeployResult = {
 export type Page<T> = { items: T[]; cursor: string | null };
 export async function upload(file: File, task = "tabular"): Promise<Dataset> {
   const vision = task === "image-classification" || task === "segmentation";
-  if (file.size > (vision ? 200_000_000 : 10_000_000)) throw new Error(vision ? "Dung lượng ZIP tối đa 200 MB." : "Dung lượng CSV tối đa 10 MB.");
+  if (file.size > 200_000_000) throw new Error(vision ? "Dung lượng ZIP tối đa 200 MB." : "Dung lượng CSV tối đa 200 MB.");
   if (!file.name.toLowerCase().endsWith(vision ? ".zip" : ".csv"))
     throw new Error(vision ? "Vui lòng chọn file .zip" : "Vui lòng chọn file .csv");
   const ticket = await api<{
@@ -304,11 +306,11 @@ export async function upload(file: File, task = "tabular"): Promise<Dataset> {
   const result = await fetch(ticket.upload.url, {
     method: "POST",
     body: form,
-    signal: AbortSignal.timeout(vision ? 600_000 : 120_000),
+    signal: AbortSignal.timeout(600_000),
   });
   if (!result.ok)
     throw new Error("Tải lên S3 thất bại. Kiểm tra CORS và kích thước tệp.");
-  return api<Dataset>(`/datasets/${ticket.dataset_id}/complete`, {});
+  return waitForDataset(await api<Dataset>(`/datasets/${ticket.dataset_id}/complete`, {}));
 }
 export function sampleFile() {
   const header = "age,monthly_spend,tenure_months,support_tickets,plan,churn";
@@ -328,4 +330,16 @@ export function sampleFile() {
   return new File([[header, ...rows].join("\n")], "customer-churn.csv", {
     type: "text/csv",
   });
+}
+
+export async function waitForDataset(initial: Dataset): Promise<Dataset> {
+  let dataset = initial;
+  const deadline = Date.now() + 1_260_000;
+  while (dataset.status === "PROCESSING") {
+    if (Date.now() > deadline) throw new Error("Xử lý dữ liệu quá thời gian. Vui lòng kiểm tra Bộ dữ liệu.");
+    await new Promise(resolve => setTimeout(resolve, 3000));
+    dataset = await api<Dataset>(`/datasets/${dataset.dataset_id}`);
+  }
+  if (dataset.status !== "READY") throw new Error(dataset.error || "Không xử lý được bộ dữ liệu.");
+  return dataset;
 }

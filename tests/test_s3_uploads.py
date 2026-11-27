@@ -38,3 +38,11 @@ class UploadEndpointTests(unittest.TestCase):
     def test_local_upload_preserves_public_endpoint(self):
         ticket = S3ArtifactStore(None, "stratus-test-bucket").presign_upload("data.csv", 1024)
         self.assertEqual(ticket["url"], "http://localhost:4566/stratus-test-bucket")
+
+    def test_csv_post_policy_allows_200_mb(self):
+        from app.datasets import MAX_BYTES
+        self.assertEqual(MAX_BYTES, 200_000_000)
+        ticket = S3ArtifactStore(client('s3'), 'stratus-test-bucket').presign_upload('data.csv', MAX_BYTES)
+        policy = json.loads(base64.b64decode(ticket['fields']['policy']))
+        self.assertIn(['content-length-range', 1, 200_000_000], policy['conditions'])
+        self.assertIn({'Content-Type': 'text/csv'}, policy['conditions'])

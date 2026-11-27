@@ -17,6 +17,7 @@ import {
 import {
   api,
   upload,
+  waitForDataset,
   sampleFile,
   config,
   signedIn,
@@ -251,6 +252,7 @@ export function Wizard({
           target: form.target, drop_columns: dropColumns, trim_strings: trim,
           drop_duplicates: dedupe, drop_missing_target: dropMissing,
         });
+        ready = await waitForDataset(ready);
         setDataset(ready);
       }
       setBusy("Đang tạo tác vụ huấn luyện…");
@@ -560,7 +562,7 @@ export function Wizard({
                   <h3>{busy || "Thả bộ dữ liệu của bạn vào đây"}</h3>
                   <p>
                     {task.format} · tối đa{" "}
-                    {task.accept === ".zip" ? "200" : "10"} MB
+                    200 MB{task.accept === ".csv" ? " · UTF-8 · 100.000 dòng · 200 cột" : ""}
                   </p>
                   <button
                     className="st-btn secondary"

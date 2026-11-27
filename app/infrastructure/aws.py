@@ -165,7 +165,7 @@ class S3ArtifactStore:
             raise
         try:
             if obj["ContentLength"] > limit:
-                raise ValueError("CSV limit: 10 MB")
+                raise ValueError(f"CSV limit: {limit // 1_000_000} MB")
             return obj["Body"].read(limit + 1).decode("utf-8-sig")
         except UnicodeDecodeError as exc:
             raise ValueError("CSV must use UTF-8 encoding") from exc
@@ -173,7 +173,7 @@ class S3ArtifactStore:
             obj["Body"].close()
 
     def save_file(self, key, path):
-        self.s3.upload_file(str(path), self.bucket, key, ExtraArgs={"ContentType": "application/zip"})
+        self.s3.upload_file(str(path), self.bucket, key, ExtraArgs={"ContentType": "text/csv" if str(path).endswith(".csv") else "application/zip"})
 
     def download_bounded(self, key, path, limit):
         try:

@@ -29,7 +29,7 @@ Response 201:
 ```
 
 Gửi `multipart/form-data` trực tiếp tới `upload.url`: append tất cả `fields`, sau đó append `file` ở cuối.
-Không thêm Cognito header vào S3 request. URL có hạn 15 phút, file 1–10.000.000 bytes.
+Không thêm Cognito header vào S3 request. URL có hạn 15 phút, file 1–200.000.000 bytes.
 
 ### POST /datasets/{id}/complete
 
@@ -202,3 +202,19 @@ group and `queue: {waiting, processing}` from SQS approximate message counts.
 Counts are shared infrastructure totals, not per-user or per-job progress.
 InService means EC2 is up; it does not guarantee the worker container is ready.
 Responses use `Cache-Control: no-store`. Monitoring failures return 503 rather than zeroes.
+
+### Large CSV processing
+
+CSV uploads support 200,000,000 bytes, 100,000 data rows and 200 columns. Browser
+inspection and backend profiling/preprocessing stream rows instead of retaining the
+whole table in memory. A field is limited to 131,072 characters.
+For CSVs larger than 10 MB on AWS, complete/preprocess immediately return a dataset
+with `status: PROCESSING`. Poll `GET /datasets/{dataset_id}` until READY or FAILED
+(with `error`). Preprocess returns a new dataset ID; poll that ID. No training job
+is queued by these operations. Column unique counts are capped at 2,048;
+`unique_lower_bound: true` means at least that many distinct values.
+
+The controller self-invokes for background processing (600-second timeout, 1 GB
+temporary disk). `ControllerImageUri` optionally updates API code independently,
+built from the exact model image without changing ML dependencies. Model runtime
+identity remains `ImageUri`; the normal full deploy resets this override.

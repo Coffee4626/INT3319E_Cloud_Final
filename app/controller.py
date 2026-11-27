@@ -1,10 +1,14 @@
 from app import runtime
 from app.http import api, body, response, owner
 from app.services import public_record
+from app import dataset_background
 
 
 @api
 def handler(event, context):
+    if "httpMethod" not in event and event.get("dataset_operation"):
+        dataset_background.run(event)
+        return {"statusCode": 200}
     method, path = event["httpMethod"], event["path"].rstrip("/")
     user = owner(event)
     service = runtime.job_service(user)
@@ -30,12 +34,12 @@ def handler(event, context):
     if method == "POST" and path == "/uploads":
         return response(201, datasets.create_upload(body(event)))
     if len(parts) == 2 and parts[0] == "datasets" and method == "GET":
-        return response(200, public_record(datasets.get(parts[1])))
+        return response(200, public_record(dataset_background.expire(datasets.get(parts[1])) ))
     if len(parts) == 3 and parts[0] == "datasets" and method == "POST":
         if parts[2] == "complete":
-            return response(200, public_record(datasets.complete(parts[1])))
+            return response(200, public_record(dataset_background.start(datasets, parts[1], "complete") or datasets.complete(parts[1])))
         if parts[2] == "preprocess":
-            return response(201, public_record(datasets.preprocess(parts[1], body(event))))
+            return response(201, public_record(dataset_background.start(datasets, parts[1], "preprocess", body(event)) or datasets.preprocess(parts[1], body(event))))
     if len(parts) == 2 and parts[0] == "deployments":
         if method == "GET":
             return response(200, service.deployment(parts[1]))

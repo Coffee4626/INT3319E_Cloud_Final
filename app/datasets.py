@@ -12,7 +12,7 @@ from collections import Counter
 
 from app.domain import ConflictError, NotFoundError
 
-MAX_BYTES = 10_000_000
+MAX_BYTES = 200_000_000
 MISSING = {"", "nan", "null", "none", "n/a"}
 
 
@@ -22,7 +22,7 @@ def missing(value):
 
 def read_csv(text):
     if not isinstance(text, str) or len(text.encode("utf-8")) > MAX_BYTES:
-        raise ValueError("CSV must be UTF-8 and at most 10 MB")
+        raise ValueError("CSV must be UTF-8 and at most 200 MB")
     try:
         reader = csv.reader(io.StringIO(text.lstrip("\ufeff")), strict=True)
         columns = next(reader, [])
@@ -147,16 +147,18 @@ class DatasetService:
             item.update(status="READY", dataset_key=key, profile=info, prepared=False)
             self.repository.put_record(item)
             return item
-        text = self.artifacts.read_csv(item["upload_key"], MAX_BYTES)
-        info = profile(text)
-        # Snapshot the upload. A still-valid upload signature cannot mutate training data.
-        key = f"datasets/{self.owner}/{dataset_id}/{uuid.uuid4().hex}.csv"
-        self.artifacts.save_csv(key, text)
+        from app.csv_stream import profile_file
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "data.csv"
+            self.artifacts.download_bounded(item["upload_key"], path, MAX_BYTES)
+            info = profile_file(path)
+            key = f"datasets/{self.owner}/{dataset_id}/{uuid.uuid4().hex}.csv"
+            self.artifacts.save_file(key, path)
         item.update(status="READY", dataset_key=key, profile=info, prepared=False)
         self.repository.put_record(item)
         return item
 
-    def preprocess(self, dataset_id, options):
+    def preprocess(self, dataset_id, options, result_id=None):
         original = self.get(dataset_id)
         if original["status"] != "READY":
             raise ConflictError("Complete the upload first")
@@ -171,15 +173,18 @@ class DatasetService:
                         report={"input_rows": original["profile"]["rows"], "output_rows": original["profile"]["rows"]})
             self.repository.put_record(item)
             return item
-        text = self.artifacts.read_csv(original["dataset_key"], MAX_BYTES)
-        cleaned, report = prepare(text, options)
-        new_id = uuid.uuid4().hex
+        from app.csv_stream import prepare_file
+        new_id = result_id or uuid.uuid4().hex
         key = f"datasets/{self.owner}/{new_id}.csv"
-        self.artifacts.save_csv(key, cleaned)
+        with tempfile.TemporaryDirectory() as folder:
+            source, destination = Path(folder) / "source.csv", Path(folder) / "prepared.csv"
+            self.artifacts.download_bounded(original["dataset_key"], source, MAX_BYTES)
+            report, info = prepare_file(source, destination, options)
+            self.artifacts.save_file(key, destination)
         item = {"id": f"dataset#{new_id}", "dataset_id": new_id, "owner": self.owner,
                 "kind": "dataset", "name": original["name"], "status": "READY",
                 "source_id": dataset_id, "dataset_key": key, "prepared": True,
                 "target": options["target"], "preprocessing": options,
-                "report": report, "profile": profile(cleaned)}
+                "report": report, "profile": info}
         self.repository.put_record(item)
         return item

@@ -66,3 +66,18 @@ test("Login restores workspace links and rejects external return destinations", 
     assert.equal(restored, expected);
   }
 });
+
+test("Dataset preparation polls its result ID and propagates failures", async () => {
+  valid();
+  const { waitForDataset } = await import('../src/api.ts');
+  let calls = 0;
+  globalThis.fetch = async url => {
+    assert.ok(String(url).endsWith('/datasets/prepared-id'));
+    calls++;
+    return Response.json({dataset_id: 'prepared-id', status: 'READY', prepared: true});
+  };
+  const ready = await waitForDataset({dataset_id: 'prepared-id', status: 'PROCESSING'});
+  assert.equal(ready.prepared, true);
+  assert.equal(calls, 1);
+  await assert.rejects(waitForDataset({status: 'FAILED', error: 'CSV limit: 100,000 rows'}), /100,000 rows/);
+});
