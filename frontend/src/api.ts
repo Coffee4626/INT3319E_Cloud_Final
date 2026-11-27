@@ -201,6 +201,10 @@ export type Column = {
   examples: string[];
 };
 export type Profile = {
+  format?: string;
+  task?: string;
+  classes?: string[];
+  splits?: { train: number; val: number };
   rows: number;
   columns: Column[];
   missing_cells: number;
@@ -209,6 +213,7 @@ export type Profile = {
   preview: Record<string, string>[];
 };
 export type Dataset = {
+  task?: string;
   id: string;
   dataset_id: string;
   name: string;
@@ -238,11 +243,14 @@ export type Metrics = {
     method: string;
     seed: number;
     test_rows: number;
+    validation_rows?: number;
     reason?: string;
     scores?: Record<string, number>;
     confusion_matrix?: { labels: string[]; values: number[][] } | null;
   };
   problem_type?: string;
+  epochs_completed?: number;
+  stop_reason?: string;
 };
 export type Job = {
   id: string;
@@ -279,14 +287,15 @@ export type DeployResult = {
   image_uri: string;
 };
 export type Page<T> = { items: T[]; cursor: string | null };
-export async function upload(file: File): Promise<Dataset> {
-  if (file.size > 10_000_000) throw new Error("Dung lượng CSV tối đa 10 MB.");
-  if (!file.name.toLowerCase().endsWith(".csv"))
-    throw new Error("Vui lòng chọn file .csv");
+export async function upload(file: File, task = "tabular"): Promise<Dataset> {
+  const vision = task === "image-classification" || task === "segmentation";
+  if (file.size > (vision ? 50_000_000 : 10_000_000)) throw new Error(vision ? "Dung lượng ZIP tối đa 50 MB." : "Dung lượng CSV tối đa 10 MB.");
+  if (!file.name.toLowerCase().endsWith(vision ? ".zip" : ".csv"))
+    throw new Error(vision ? "Vui lòng chọn file .zip" : "Vui lòng chọn file .csv");
   const ticket = await api<{
     dataset_id: string;
     upload: { url: string; fields: Record<string, string> };
-  }>("/uploads", { name: file.name });
+  }>("/uploads", { name: file.name, task });
   const form = new FormData();
   Object.entries(ticket.upload.fields).forEach(([key, value]) =>
     form.append(key, value),

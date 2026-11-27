@@ -1020,7 +1020,7 @@ function Datasets({ go }: { go: (p: string) => void }) {
           <Empty
             icon={<Database size={28} />}
             headline="Thư viện đang trống"
-            detail="Tải lên tệp CSV để khám phá dữ liệu và bắt đầu thí nghiệm."
+            detail="Chọn bộ dữ liệu CSV hoặc ZIP ảnh để bắt đầu thí nghiệm."
             action={
               <Button onClick={() => go("/app/new")}>
                 Thêm bộ dữ liệu đầu tiên
@@ -1047,7 +1047,9 @@ function Datasets({ go }: { go: (p: string) => void }) {
               <h3>{d.name}</h3>
               <p>
                 {d.profile
-                  ? `${fmt(d.profile.rows)} dòng · ${d.profile.columns.length} cột`
+                  ? d.profile.format === "image-zip"
+                    ? `${fmt(d.profile.rows)} ảnh · ${d.profile.classes?.length || 0} lớp`
+                    : `${fmt(d.profile.rows)} dòng · ${d.profile.columns.length} cột`
                   : "Chưa hoàn tất tải lên"}
               </p>
               <div className="dataset-card-footer">
@@ -1064,8 +1066,11 @@ function Datasets({ go }: { go: (p: string) => void }) {
           <div className="modal-body">
             {selected.profile ? (
               <>
-                <ProfileSummary profile={selected.profile} />
-                <PreviewTable profile={selected.profile} />
+                {selected.profile.format === "image-zip" ? <>
+                  <p>{selected.task === "segmentation" ? "Phân đoạn ngữ nghĩa" : "Phân loại ảnh"} · {selected.profile.rows} ảnh</p>
+                  <p>Huấn luyện: {selected.profile.splits?.train} · Kiểm định: {selected.profile.splits?.val}</p>
+                  <p>Các lớp: {selected.profile.classes?.join(", ")}</p>
+                </> : <><ProfileSummary profile={selected.profile} /><PreviewTable profile={selected.profile} /></>}
                 <div className="modal-actions">
                   <Button
                     onClick={() =>

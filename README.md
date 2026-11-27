@@ -1,6 +1,6 @@
 # Stratus — Cloud AutoML Studio
 
-Ứng dụng full stack cho **CSV → preprocess → train AutoGluon trên EC2 Auto Scaling → deploy → predict**.
+Ứng dụng full stack cho **CSV/ZIP ảnh → preprocess → train trên EC2 Auto Scaling → deploy → predict**.
 Frontend React + TypeScript, backend Python, hạ tầng AWS khai báo bằng CloudFormation/SAM.
 
 **Trạng thái AWS đã triển khai:** [docs/deployment-status.md](docs/deployment-status.md).
@@ -78,12 +78,12 @@ Không cần SAM CLI. AWS tài khoản thật có phát sinh phí; script không
 | Đăng nhập AWS | Cognito Hosted UI, OAuth code + PKCE, refresh token, đăng xuất |
 | Dataset | Presigned S3 upload, profile cột, preview, thiếu/trùng, thư viện phân trang |
 | Tiền xử lý | Chọn target/features, trim chuỗi, chuẩn hóa giá trị thiếu, bỏ trùng/thiếu target, bản mới bất biến |
-| Huấn luyện | Classification, regression, tự suy luận; SQS + AutoGluon/LightGBM; leaderboard, validation metric, test metrics và confusion matrix |
+| Huấn luyện | Dữ liệu bảng: AutoGluon/LightGBM. Ảnh: MobileNet, ResNet-18, U-Net, DeepLabV3; loss, validation metrics và confusion matrix |
 | Job lifecycle | Theo dõi trạng thái, hủy khi chờ, retry tạo job mới, lease owner, heartbeat, xử lý DLQ |
 | Scaling | EC2 ASG 0–N theo SQS; bảo vệ worker đang train; về 0 sau 15 phút idle |
 | Deployment | Mapping model trong DynamoDB, kiểm tra image digest, key riêng chỉ lưu SHA-256 |
-| Inference | API Gateway → Lambda proxy → EC2 riêng trong VPC; image ECR, model S3, cache, API key; tối đa 100 rows |
-| Playground | Gửi JSON, xem predictions/latency, mẫu cURL, xoay key và thu hồi endpoint |
+| Inference | API Gateway → Lambda proxy → EC2 riêng trong VPC; image ECR, model S3, cache, API key; tối đa 100 rows hoặc một ảnh base64 |
+| Playground | Gửi JSON/ảnh, xem predictions/latency, xác suất, mặt nạ overlay, mẫu cURL, xoay key và thu hồi endpoint |
 | Hạ tầng | IAM roles, private S3 + CloudFront OAC, DynamoDB PITR, encrypted SQS/EBS, CloudWatch, budget tùy chọn |
 | Kiểm thử | Unit/integration Moto, smoke ML thật, TypeScript build, CloudFormation lint, GitHub CI |
 
@@ -155,9 +155,10 @@ npm run build
 
 ## Phạm vi và giới hạn
 
-- Tám bài toán có trong giao diện, nhưng bộ xử lý hiện chỉ huấn luyện/dự đoán dữ liệu bảng với LightGBM.
-  Các bài toán ảnh, NLP, chuỗi thời gian và mô hình khác chưa có bộ xử lý tương ứng.
-  Biểu đồ hạ tầng mô tả kiến trúc; số EC2/CPU/GPU trực tiếp chưa nối nguồn giám sát.
+- Giao diện cung cấp phân loại ảnh, phân đoạn ngữ nghĩa, phân loại và hồi quy dữ liệu bảng.
+  [Hướng dẫn ảnh, cấu hình và inference](docs/image-workflows.md). ZIP ảnh tối đa 50 MB.
+  Wizard giữ tệp trên thiết bị: chỉ bấm Bắt đầu huấn luyện mới upload, chuẩn bị dữ liệu và tạo job.
+  Biểu đồ hạ tầng mô tả kiến trúc; không tự suy diễn số máy đang chạy từ trạng thái job.
 - CSV UTF-8, tối đa 10 MB / 100.000 rows / 200 cột, header ≤128 ký tự; upload trực tiếp S3.
   API inline cũ (`POST /jobs` kèm `csv`) vẫn hỗ trợ, giới hạn 1 MB.
 - Tiền xử lý không fit mean/median/encoder trên toàn bộ dataset. AutoGluon xử lý feature trong train;
@@ -166,7 +167,8 @@ npm run build
   Random split không phù hợp để đo tổng quát hóa cho dữ liệu thời gian hoặc nhiều dòng cùng một thực thể.
 - Model image là runtime dùng chung cho worker và Lambda theo sơ đồ. Artifact model nằm ở S3;
   deploy không build một Docker image riêng cho từng model. Chỉ model từ worker của hệ thống mới được load.
-- `time_limit` 10–600 giây là ngân sách fit của AutoGluon, không phải hard timeout cho toàn bộ job.
+- `time_limit` 10–600 giây là ngân sách fit mềm, không phải hard timeout cho toàn bộ job.
+  Bài toán ảnh dùng thư mục val để chọn checkpoint và báo chỉ số, chưa có test độc lập.
 - Production dùng `INFERENCE_MODE=ec2`: một máy 2 vCPU / 8 GB luôn chạy để phục vụ endpoint; worker train co giãn 0–1.
   Lambda proxy chờ tối đa 25 giây; model ≤1 GB uncompressed và body dự đoán ≤1 MB.
   EC2 xử lý một request mỗi lần để bảo vệ cache; request đồng thời trả 429 để client thử lại.
@@ -178,6 +180,6 @@ npm run build
 - Local không phải môi trường multi-user an toàn. AWS dùng Cognito + owner checks cho mỗi tài nguyên;
   quyền truy cập prediction là bearer key, cần giữ ở backend của ứng dụng khách.
 - API rate limit ở Gateway là best effort; không có billing quota theo user, thanh toán, custom domain,
-  GPU, time-series, NLP hoặc image classification. “Image” trong kiến trúc là Docker image.
+  GPU, time-series, NLP, object detection hoặc instance segmentation.
 
 Tham khảo thiết kế và nguồn AWS: [docs/architecture.md](docs/architecture.md).

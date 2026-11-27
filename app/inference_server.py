@@ -66,6 +66,9 @@ def main():
     logging.basicConfig(level=logging.INFO)
     # Load native dependencies before the health check reports readiness.
     from autogluon.tabular import TabularPredictor  # noqa: F401
+    import torch
+    import torchvision  # noqa: F401
+    torch.set_num_threads(2)
     ThreadingHTTPServer(("0.0.0.0", 8080), Handler).serve_forever()
 
 

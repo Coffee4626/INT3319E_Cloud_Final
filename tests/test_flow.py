@@ -87,6 +87,51 @@ class FlowTests(unittest.TestCase):
         self.assertEqual(self.call("/jobs", {"csv": "x\n1", "target": "y"})[0], 400)
         self.assertNotIn("Messages", client("sqs").receive_message(QueueUrl=os.environ["QUEUE_URL"]))
 
+    def test_explicit_submission_retry_is_idempotent_and_owner_scoped(self):
+        payload = {"csv": "x,y\n1,a\n2,b", "target": "y", "task": "classification",
+                   "submission_id": "6c9b125b-303d-4cbb-a740-e820251e91ed"}
+        a = self.call("/jobs", payload, owner="alice")
+        b = self.call("/jobs", payload, owner="alice")
+        self.assertEqual(a, b)
+        self.assertEqual(a[0], 202)
+        self.assertEqual(self.call("/jobs", {**payload, "time_limit": 120}, owner="alice")[0], 409)
+        messages = client("sqs").receive_message(QueueUrl=os.environ["QUEUE_URL"], MaxNumberOfMessages=10)["Messages"]
+        self.assertEqual(len(messages), 1)
+        c = self.call("/jobs", payload, owner="bob")
+        self.assertNotEqual(a[1]["job_id"], c[1]["job_id"])
+
+    def test_image_preparation_does_not_enqueue_until_explicit_submit_and_keeps_snapshot(self):
+        from vision_fixtures import vision_zip
+        for task in ("image-classification", "segmentation"):
+            status, ticket = self.call("/uploads", {"name": "images.zip", "task": task}, owner="alice")
+            self.assertEqual(status, 201)
+            self.assertEqual(ticket["upload"]["fields"]["Content-Type"], "application/zip")
+            key = ticket["upload"]["fields"]["key"]
+            content = vision_zip(task)
+            client("s3").put_object(Bucket="automl-test", Key=key, Body=content)
+            status, complete = self.call(f'/datasets/{ticket["dataset_id"]}/complete', owner="alice")
+            self.assertEqual(status, 200)
+            client("s3").put_object(Bucket="automl-test", Key=key, Body=b"overwritten upload")
+            status, prepared = self.call(f'/datasets/{ticket["dataset_id"]}/preprocess', {}, owner="alice")
+            self.assertEqual(status, 201)
+            self.assertTrue(prepared["prepared"])
+            self.assertEqual(client("s3").get_object(Bucket="automl-test", Key=prepared["dataset_key"])["Body"].read(), content)
+            self.assertEqual(self.call("/jobs", method="GET", owner="alice")[1]["items"], [])
+            self.assertNotIn("Messages", client("sqs").receive_message(QueueUrl=os.environ["QUEUE_URL"]))
+            # An owner cannot train another user's images, or select a mismatched task.
+            body = {"dataset_id": prepared["dataset_id"], "task": task, "config": {"epochs": 2}}
+            self.assertEqual(self.call("/jobs", body, owner="bob")[0], 404)
+            self.assertEqual(self.call("/jobs", {**body, "task": "regression"}, owner="alice")[0], 400)
+            status, job = self.call("/jobs", body, owner="alice")
+            self.assertEqual(status, 202)
+            saved = table().get_item(Key={"id": job["job_id"]})["Item"]
+            self.assertEqual(saved["config"]["epochs"], 2)
+            messages = client("sqs").receive_message(QueueUrl=os.environ["QUEUE_URL"])["Messages"]
+            self.assertEqual(len(messages), 1)
+            self.assertEqual(messages[0]["Body"], job["job_id"])
+            client("sqs").delete_message(QueueUrl=os.environ["QUEUE_URL"], ReceiptHandle=messages[0]["ReceiptHandle"])
+            table().delete_item(Key={"id": job["job_id"]})
+
     def test_deploy_requires_completed_job_and_resolves_model(self):
         job_id = self.submit()
         self.assertEqual(self.call("/deploy", {"job_id": job_id})[0], 409)

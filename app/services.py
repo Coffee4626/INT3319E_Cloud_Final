@@ -9,11 +9,13 @@ import hashlib
 import hmac
 import secrets
 import threading
+import json
 from pathlib import Path
 
 from app.domain import ArtifactStore, ConflictError, JobQueue, JobRepository, NotFoundError, TrainingRequest, UnauthorizedError
 from app.datasets import DatasetService, MAX_BYTES
 from app.tasks.factory import TaskFactory
+from app.vision_data import VISION_TASKS, training_config
 
 logger = logging.getLogger(__name__)
 
@@ -25,29 +27,69 @@ class JobService:
         self.owner = owner
 
     def submit(self, payload: dict) -> dict:
+        if not isinstance(payload.get("task", "tabular"), str):
+            raise ValueError("task must be a string")
+        submission_id = payload.get("submission_id")
+        if submission_id is not None:
+            try:
+                submission_id = uuid.UUID(submission_id).hex
+            except (ValueError, AttributeError, TypeError) as exc:
+                raise ValueError("submission_id must be a UUID") from exc
         dataset = None
         if payload.get("dataset_id"):
             dataset = DatasetService(self.repository, self.artifacts, self.owner).get(payload["dataset_id"])
             if dataset["status"] != "READY" or not dataset.get("prepared"):
                 raise ConflictError("Preprocess the dataset before training")
-            payload = {**payload, "csv": self.artifacts.read_csv(dataset["dataset_key"], MAX_BYTES),
+            vision = dataset.get("task") in VISION_TASKS
+            if vision != (payload.get("task") in VISION_TASKS) or (vision and dataset["task"] != payload["task"]):
+                raise ValueError("Dataset task does not match the requested training task")
+            payload = {**payload, "csv": "" if vision else self.artifacts.read_csv(dataset["dataset_key"], MAX_BYTES),
                        "target": dataset["target"]}
         elif isinstance(payload.get("csv"), str) and len(payload["csv"].encode()) > 1_000_000:
             raise ValueError("Inline CSV limit: 1 MB; use /uploads for larger datasets")
         request = TrainingRequest.parse(payload)
+        if request.task in VISION_TASKS and not dataset:
+            raise ValueError("Image training requires a validated, prepared ZIP dataset")
         self.tasks.create(request.task).validate_training(request)
-        job_id = uuid.uuid4().hex
+        settings = training_config(request.task, request.config) if request.task in VISION_TASKS else {}
+        job_id = uuid.uuid5(uuid.NAMESPACE_URL, self.owner + ":" + submission_id).hex if submission_id else uuid.uuid4().hex
         name = payload.get("name") or (dataset["name"] if dataset else "Untitled experiment")
         if not isinstance(name, str) or len(name) > 120:
             raise ValueError("Experiment name must be at most 120 characters")
         key = dataset["dataset_key"] if dataset else f"datasets/{job_id}.csv"
+        signature = hashlib.sha256(json.dumps({"dataset_id": payload.get("dataset_id"), "csv": request.csv,
+            "target": request.target, "task": request.task, "time_limit": request.time_limit,
+            "config": settings, "name": name}, sort_keys=True).encode()).hexdigest()
+        if submission_id and not dataset:
+            key = f"datasets/{job_id}/{signature}.csv"
+
+        def existing_result():
+            existing = self.repository.get_job(job_id) if submission_id else None
+            if existing:
+                if existing.get("submission_signature") != signature:
+                    raise ConflictError("submission_id was already used with a different configuration")
+                return {"job_id": job_id, "status": existing["status"], "task": existing["task"]}
+            return None
+
+        existing = existing_result()
+        if existing:
+            return existing
         if not dataset:
             self.artifacts.save_csv(key, request.csv)
-        self.repository.create_job({
+        record = {
             "id": job_id, "status": "QUEUED", "dataset_key": key, "task": request.task,
             "name": name, "owner": self.owner, "dataset_id": dataset["dataset_id"] if dataset else None,
             "image_uri": os.getenv("MODEL_IMAGE_URI", "automl:local"),
-            "target": request.target, "time_limit": request.time_limit, "created_at": int(time.time())})
+            "target": request.target, "time_limit": request.time_limit, "config": settings,
+            "created_at": int(time.time()), "submission_signature": signature}
+        try:
+            self.repository.create_job(record)
+        except Exception:
+            # A concurrent request with the same UUID may have won the conditional put.
+            existing = existing_result()
+            if existing:
+                return existing
+            raise
         try:
             self.queue.enqueue(job_id)
         except Exception:
@@ -78,6 +120,11 @@ class JobService:
             raise ConflictError("Only failed or cancelled jobs can be retried")
         payload = {key: job[key] for key in ("target", "task", "time_limit", "name")}
         payload["time_limit"] = int(job["time_limit"])
+        if job.get("config"):
+            # DynamoDB numbers deserialize as Decimal; normalize at the API boundary.
+            import json
+            payload["config"] = json.loads(json.dumps(job["config"],
+                default=lambda v: int(v) if v == int(v) else float(v)))
         if job.get("dataset_id"):
             payload["dataset_id"] = job["dataset_id"]
         else:

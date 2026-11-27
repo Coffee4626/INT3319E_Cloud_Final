@@ -6,6 +6,8 @@ import csv
 import io
 import math
 import uuid
+import tempfile
+from pathlib import Path
 from collections import Counter
 
 from app.domain import ConflictError, NotFoundError
@@ -114,19 +116,36 @@ class DatasetService:
         return item
 
     def create_upload(self, payload):
+        from app.vision_data import VISION_TASKS, MAX_ZIP_BYTES
+        task = payload.get("task", "tabular")
+        if not isinstance(task, str) or task not in VISION_TASKS | {"tabular", "classification", "regression"}:
+            raise ValueError("Unsupported dataset task")
+        vision = task in VISION_TASKS
         name = payload.get("name", "dataset.csv")
         if not isinstance(name, str) or not name.strip() or len(name) > 200:
             raise ValueError("Dataset name must contain 1–200 characters")
         dataset_id = uuid.uuid4().hex
-        key = f"uploads/{self.owner}/{dataset_id}.csv"
+        key = f"uploads/{self.owner}/{dataset_id}.{'zip' if vision else 'csv'}"
         self.repository.put_record({"id": f"dataset#{dataset_id}", "dataset_id": dataset_id,
                                    "name": name, "owner": self.owner, "kind": "dataset",
-                                   "status": "UPLOADING", "upload_key": key})
-        return {"dataset_id": dataset_id, "upload": self.artifacts.presign_upload(key, MAX_BYTES)}
+                                   "status": "UPLOADING", "upload_key": key, "task": task})
+        return {"dataset_id": dataset_id, "upload": self.artifacts.presign_upload(
+            key, MAX_ZIP_BYTES if vision else MAX_BYTES, "application/zip" if vision else "text/csv")}
 
     def complete(self, dataset_id):
         item = self.get(dataset_id)
         if item["status"] == "READY":
+            return item
+        from app.vision_data import VISION_TASKS, MAX_ZIP_BYTES, inspect_archive, public_profile
+        if item.get("task") in VISION_TASKS:
+            with tempfile.TemporaryDirectory() as folder:
+                path = Path(folder) / "dataset.zip"
+                self.artifacts.download_bounded(item["upload_key"], path, MAX_ZIP_BYTES)
+                info = public_profile(inspect_archive(path, item["task"]))
+                key = f"datasets/{self.owner}/{dataset_id}/{uuid.uuid4().hex}.zip"
+                self.artifacts.save_file(key, path)
+            item.update(status="READY", dataset_key=key, profile=info, prepared=False)
+            self.repository.put_record(item)
             return item
         text = self.artifacts.read_csv(item["upload_key"], MAX_BYTES)
         info = profile(text)
@@ -141,6 +160,17 @@ class DatasetService:
         original = self.get(dataset_id)
         if original["status"] != "READY":
             raise ConflictError("Complete the upload first")
+        from app.vision_data import VISION_TASKS
+        if original.get("task") in VISION_TASKS:
+            new_id = uuid.uuid4().hex
+            item = {k: v for k, v in original.items() if k not in
+                    ("upload_key", "created_at", "created_id", "scope")}
+            item.update(id=f"dataset#{new_id}", dataset_id=new_id, source_id=dataset_id,
+                        prepared=True, target="label" if original["task"] == "image-classification" else "mask",
+                        preprocessing={"resize_at_training": True, "normalize": "imagenet"},
+                        report={"input_rows": original["profile"]["rows"], "output_rows": original["profile"]["rows"]})
+            self.repository.put_record(item)
+            return item
         text = self.artifacts.read_csv(original["dataset_key"], MAX_BYTES)
         cleaned, report = prepare(text, options)
         new_id = uuid.uuid4().hex

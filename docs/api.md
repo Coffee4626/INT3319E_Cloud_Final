@@ -78,7 +78,9 @@ Luôn giữ target và ít nhất một feature. Chuỗi rỗng, `NaN`, `null`, 
 {"dataset_id":"<prepared dataset>","name":"Customer churn v1","task":"classification","time_limit":60}
 ```
 
-Target lấy từ dataset đã preprocess. `task`: `classification`, `regression`, `tabular` (auto).
+Target lấy từ dataset đã preprocess. `task`: `classification`, `regression`, `tabular` (auto), `image-classification`, `segmentation`.
+Ảnh yêu cầu ZIP đã xác minh/chuẩn bị, không nhận CSV inline. Xem [hợp đồng ảnh](image-workflows.md).
+`submission_id` UUID tùy chọn giúp thử lại cùng request mà không tạo job trùng.
 `time_limit` integer 10–600 giây. Classification cần ≥2 lớp; regression target phải là số hữu hạn.
 Trả 202: `{"job_id":"<id>","status":"QUEUED","task":"classification"}`.
 
@@ -187,3 +189,7 @@ không phải kiểm tra toàn bộ EC2/S3/SQS đang healthy.
 | 409 | State conflict, revoke hoặc image mismatch |
 | 429 | Gateway throttle |
 | 500/502/504 | Lỗi runtime, memory, dependency hoặc timeout; xem CloudWatch |
+
+## API ảnh
+
+Upload ZIP, cấu hình model, đánh giá và payload inference ảnh: [image-workflows.md](image-workflows.md).

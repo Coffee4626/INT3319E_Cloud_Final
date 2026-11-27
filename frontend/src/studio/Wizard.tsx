@@ -48,8 +48,6 @@ export function TaskCatalog({
     "Tất cả",
     "Thị giác máy tính",
     "Dữ liệu bảng",
-    "Ngôn ngữ tự nhiên",
-    "Chuỗi thời gian",
   ];
   return (
     <>
@@ -61,7 +59,7 @@ export function TaskCatalog({
             onClick={() => setFilter(g)}
           >
             {g}
-            {g === "Tất cả" && <span>8</span>}
+            {g === "Tất cả" && <span>{TASKS.length}</span>}
           </button>
         ))}
       </div>
@@ -118,9 +116,18 @@ export function Wizard({
     [trim, setTrim] = useState(true),
     [dropMissing, setDropMissing] = useState(true);
   const input = useRef<HTMLInputElement>(null);
+  const selectedFile = useRef<File | null>(null);
+  const submitting = useRef(false);
+  const submissionId = useRef<string | null>(null);
+  const uploaded = useRef<Dataset | null>(null);
   const task = taskById(form.taskId),
-    isLive = !!task.live;
-  const patch = (v: Partial<RunConfig>) => setForm((f) => ({ ...f, ...v }));
+    isLive = !!task.live,
+    isTabular = task.group === "Dữ liệu bảng",
+    isVision = task.group === "Thị giác máy tính";
+  const patch = (v: Partial<RunConfig>) => {
+    submissionId.current = null;
+    setForm((f) => ({ ...f, ...v }));
+  };
   const setData = (s: DataSummary, d?: Dataset) => {
     setSummary(s);
     setDataset(d || null);
@@ -144,14 +151,14 @@ export function Wizard({
         const p = d.profile;
         if (!p) throw new Error("Bộ dữ liệu chưa có hồ sơ.");
         setForm({
-          ...defaultConfig("classification"),
+          ...defaultConfig(d.task && d.task !== "tabular" ? taskById(d.task).id : "classification"),
           name: d.name + " · thí nghiệm",
         });
         setData(
           {
             name: d.name,
             count: p.rows,
-            classes: 0,
+            classes: p.classes?.length || 0,
             columns: p.columns.map((c) => c.name),
             files: [],
             size: p.size_bytes,
@@ -175,6 +182,8 @@ export function Wizard({
   }, [existingDataset]);
   const selectTask = (id: TaskId) => {
     if (id === form.taskId) return;
+    selectedFile.current = null;
+    uploaded.current = null;
     setForm(defaultConfig(id));
     setSummary(null);
     setDataset(null);
@@ -182,17 +191,17 @@ export function Wizard({
     setError("");
   };
   async function receive(file: File) {
-    setBusy(isLive ? "Tải lên & phân tích CSV…" : "Kiểm tra cấu trúc dữ liệu…");
+    setBusy("Kiểm tra tệp trên thiết bị…");
+    selectedFile.current = null;
+    uploaded.current = null;
     setError("");
     setPrepared(false);
     setSummary(null);
     setDataset(null);
     try {
       const s = await inspectFile(file, task);
-      if (isLive) {
-        const d = await upload(file);
-        setData({ ...s, count: d.profile?.rows || s.count }, d);
-      } else setData(s);
+      selectedFile.current = file;
+      setData(s);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -219,52 +228,47 @@ export function Wizard({
         : sampleFile();
     await receive(f);
   }
-  async function preprocess() {
+  function preprocess() {
     if (!summary) return;
     setError("");
-    if (!isLive) {
-      setPrepared(true);
-      return;
-    }
-    if (!dataset) return;
-    setBusy("Đang tiền xử lý…");
-    try {
-      const d = await api<Dataset>(
-        `/datasets/${dataset.dataset_id}/preprocess`,
-        {
-          target: form.target,
-          drop_columns: dropColumns,
-          trim_strings: trim,
-          drop_duplicates: dedupe,
-          drop_missing_target: dropMissing,
-        },
-      );
-      setDataset(d);
-      setPrepared(true);
-      patch({ count: d.profile?.rows || summary.count });
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy("");
-    }
+    setPrepared(true);
   }
   async function start() {
+    if (submitting.current || !isLive || !prepared || (!selectedFile.current && !dataset)) return;
+    submitting.current = true;
     setError("");
-    if (!isLive) return;
-    if (!dataset || !prepared) return;
-    setBusy("Tạo tác vụ huấn luyện…");
+    setBusy("Đang tải bộ dữ liệu lên S3…");
     try {
+      let source = dataset || uploaded.current;
+      if (!source) {
+        source = await upload(selectedFile.current!, task.id);
+        uploaded.current = source;
+      }
+      let ready = source;
+      if (!source.prepared) {
+        setBusy("Đang xác minh và chuẩn bị dữ liệu…");
+        ready = await api<Dataset>(`/datasets/${source.dataset_id}/preprocess`, {
+          target: form.target, drop_columns: dropColumns, trim_strings: trim,
+          drop_duplicates: dedupe, drop_missing_target: dropMissing,
+        });
+        setDataset(ready);
+      }
+      setBusy("Đang tạo tác vụ huấn luyện…");
       const j = await api<{ job_id: string }>("/jobs", {
-        dataset_id: dataset.dataset_id,
-        name: form.name,
-        target: form.target,
-        task: task.id,
-        time_limit: form.timeLimit,
+        submission_id: submissionId.current ||= crypto.randomUUID(),
+        dataset_id: ready.dataset_id, name: form.name, target: form.target,
+        task: task.id, time_limit: form.timeLimit,
+        ...(isVision ? { config: {
+          model: form.modelIds[0], epochs: form.epochs, batch_size: form.batchSize,
+          learning_rate: form.learningRate, image_size: form.imageSize,
+          augment: form.augment, early_stopping: form.earlyStopping,
+        }} : {}),
       });
       onLive(j.job_id);
     } catch (e) {
       setError((e as Error).message);
     } finally {
+      submitting.current = false;
       setBusy("");
     }
   }
@@ -277,7 +281,7 @@ export function Wizard({
           <h1>Từ dữ liệu đến một mô hình.</h1>
           <p>Chọn bài toán của bạn. Studio sẽ thiết lập phần còn lại.</p>
         </div>
-        <button className="st-btn ghost" onClick={() => go("/app")}>
+        <button className="st-btn ghost" disabled={!!busy} onClick={() => go("/app")}>
           Đóng
         </button>
       </div>
@@ -347,7 +351,7 @@ export function Wizard({
               )}
               <div className="st-section-heading">
                 <div>
-                  <h2>Chọn mô hình để so sánh</h2>
+                  <h2>Chọn mô hình huấn luyện</h2>
                   <p>
                     {isLive
                       ? "Chọn mô hình phù hợp với bài toán của bạn."
@@ -360,9 +364,9 @@ export function Wizard({
                 {task.models.map((m) => (
                   <button
                     key={m.id}
-                    disabled={isLive && m.id !== "lightgbm"}
+                    disabled={isTabular && m.id !== "lightgbm"}
                     title={
-                      isLive && m.id !== "lightgbm"
+                      isTabular && m.id !== "lightgbm"
                         ? "Mô hình này chưa khả dụng trong không gian làm việc."
                         : m.name
                     }
@@ -370,11 +374,7 @@ export function Wizard({
                     className={`st-model-card ${form.modelIds.includes(m.id) ? "selected" : ""}`}
                     onClick={() =>
                       patch({
-                        modelIds: form.modelIds.includes(m.id)
-                          ? form.modelIds.length > 1
-                            ? form.modelIds.filter((id) => id !== m.id)
-                            : form.modelIds
-                          : [...form.modelIds, m.id],
+                        modelIds: [m.id],
                       })
                     }
                   >
@@ -408,7 +408,7 @@ export function Wizard({
                       onChange={(e) => patch({ name: e.target.value })}
                     />
                   </label>
-                  {isLive ? (
+                  {isLive && (
                     <label>
                       Giới hạn thời gian (giây)
                       <select
@@ -420,13 +420,14 @@ export function Wizard({
                         ))}
                       </select>
                     </label>
-                  ) : (
+                  )}
+                  {isVision && (
                     <>
                       <label>
                         Số vòng huấn luyện
                         <input
                           type="number"
-                          min="5"
+                          min="1"
                           max="100"
                           value={form.epochs}
                           onChange={(e) => patch({ epochs: +e.target.value })}
@@ -440,7 +441,7 @@ export function Wizard({
                             patch({ batchSize: +e.target.value })
                           }
                         >
-                          {[8, 16, 32, 64].map((n) => (
+                          {[1, 2, 4, 8, 16].map((n) => (
                             <option key={n}>{n}</option>
                           ))}
                         </select>
@@ -459,21 +460,14 @@ export function Wizard({
                         </select>
                       </label>
                       <label>
-                        Huấn luyện / kiểm định
-                        <select
-                          value={form.trainSplit}
-                          onChange={(e) =>
-                            patch({ trainSplit: +e.target.value })
-                          }
-                        >
-                          <option value="80">80% / 20%</option>
-                          <option value="70">70% / 30%</option>
-                          <option value="90">90% / 10%</option>
+                        Kích thước ảnh đầu vào
+                        <select value={form.imageSize} onChange={(e) => patch({ imageSize: +e.target.value })}>
+                          {[64, 128, 192, 256].map((size) => <option key={size} value={size}>{size} × {size} px</option>)}
                         </select>
                       </label>
                     </>
                   )}
-                  {isLive && (
+                  {isTabular && (
                     <p className="st-note">
                       Giữ 20% dữ liệu làm tập kiểm tra độc lập khi đủ mẫu. AutoGluon tự tách tập kiểm định từ phần dữ liệu huấn luyện. Số vòng huấn luyện, kích thước lô và GPU không áp dụng cho mô hình này.
                     </p>
@@ -531,9 +525,7 @@ export function Wizard({
                   <div>
                     <h2>Dữ liệu phù hợp, mô hình tốt hơn.</h2>
                     <p>
-                      {isLive
-                        ? "CSV được tải lên an toàn và phân tích lược đồ."
-                        : "Kiểm tra định dạng và cấu trúc của bộ dữ liệu trước khi huấn luyện."}
+                      Chọn tệp và kiểm tra cấu trúc trên thiết bị. Dữ liệu chỉ được tải lên khi bạn bấm Bắt đầu huấn luyện.
                     </p>
                   </div>
                 </div>
@@ -577,7 +569,7 @@ export function Wizard({
                   >
                     Chọn tệp
                   </button>
-                  {isLive && (
+                  {isTabular && (
                     <>
                       <span>hoặc</span>
                       <button
@@ -622,6 +614,8 @@ export function Wizard({
                         aria-label="Bỏ bộ dữ liệu"
                         disabled={!!busy}
                         onClick={() => {
+                          selectedFile.current = null;
+                          uploaded.current = null;
                           setSummary(null);
                           setPrepared(false);
                           setDataset(null);
@@ -673,7 +667,7 @@ export function Wizard({
                         </select>
                       </label>
                     )}
-                    {dataset?.profile && (
+                    {isTabular && dataset?.profile && (
                       <div className="st-profile-stats">
                         <span>
                           <b>{dataset.profile.missing_cells}</b> ô thiếu dữ liệu
@@ -688,7 +682,7 @@ export function Wizard({
                     )}
                     <h4>Tiền xử lý</h4>
                     <div className="st-checks">
-                      {isLive ? (
+                      {isTabular ? (
                         <>
                           <label>
                             <input
@@ -747,7 +741,8 @@ export function Wizard({
                           <label>
                             <input
                               type="checkbox"
-                              checked={form.normalize}
+                              checked={true}
+                              disabled
                               onChange={(e) => {
                                 patch({ normalize: e.target.checked });
                                 setPrepared(false);
@@ -789,7 +784,7 @@ export function Wizard({
                       disabled={
                         !!busy ||
                         prepared ||
-                        (isLive &&
+                        (isTabular &&
                           (!form.target ||
                             dropColumns.length >= summary.columns.length - 1))
                       }
@@ -799,18 +794,12 @@ export function Wizard({
                       ) : (
                         <SlidersHorizontal size={17} />
                       )}{" "}
-                      {prepared
-                        ? isLive
-                          ? "Đã tiền xử lý"
-                          : "Đã kiểm tra cấu trúc"
-                        : isLive
-                          ? "Tiền xử lý dữ liệu"
-                          : "Kiểm tra dữ liệu"}
+                      {prepared ? "Đã xác nhận cấu hình dữ liệu" : "Xác nhận cấu hình dữ liệu"}
                     </button>
-                    {!isLive && (
+                    {isVision && (
                       <p className="st-muted">
                         Kiểm tra cấu trúc thư mục hoàn tất. Chú thích, mặt nạ và
-                        nội dung ảnh sẽ được kiểm tra bởi môi trường huấn luyện.
+                        nội dung ảnh sẽ được xác minh trước khi tạo tác vụ. Ảnh được đổi kích thước; mặt nạ giữ nguyên mã lớp. Tập val chỉ dùng đánh giá, không tăng cường dữ liệu.
                       </p>
                     )}
                   </div>
@@ -878,9 +867,9 @@ export function Wizard({
                     <div>
                       <dt>Huấn luyện</dt>
                       <dd>
-                        {isLive
+                        {isTabular
                           ? `Giới hạn ${form.timeLimit} giây`
-                          : `${form.epochs} vòng · lô ${form.batchSize} · tốc độ học ${form.learningRate}`}
+                          : `${form.epochs} vòng · lô ${form.batchSize} · ${form.imageSize} px · tối đa ${form.timeLimit}s`}
                       </dd>
                     </div>
                     <div>
@@ -900,18 +889,18 @@ export function Wizard({
                   <h3>Theo dõi toàn bộ hành trình.</h3>
                   <p>
                     {isLive
-                      ? "Bộ dữ liệu đã tiền xử lý được đưa vào hàng đợi; máy xử lý huấn luyện, đánh giá trên tập kiểm tra độc lập và lưu mô hình."
+                      ? "Sau khi bạn bắt đầu, dữ liệu được xác minh rồi đưa vào hàng đợi. EC2 tự khởi động để huấn luyện, đánh giá và lưu mô hình."
                       : "Theo dõi quá trình tăng số máy xử lý, xem mất mát từng vòng học, so sánh mô hình và thử dự đoán."}
                   </p>
                   <div className="st-note">
                     {isLive
-                      ? "Tác vụ huấn luyện được ghi nhận trong không gian làm việc. Kết quả được lưu cùng gói mô hình."
+                      ? "Chưa tạo tác vụ và chưa khởi động máy huấn luyện. Bạn có thể đóng trang mà không phát sinh compute huấn luyện."
                       : "Môi trường chạy chưa sẵn sàng cho bài toán này. Chức năng huấn luyện sẽ được mở sau khi kết nối tài nguyên cần thiết."}
                   </div>
                 </div>
               </div>
               <DataEvolution taskId={task.id} stage={1} />
-              <Architecture taskId={task.id} stage={2} live={isLive} />
+              <Architecture taskId={task.id} stage={0} live={isLive} />
             </>
           )}
         </>
@@ -946,7 +935,7 @@ export function Wizard({
                 (step === 2 && !prepared) ||
                 (step === 1 &&
                   (!form.name.trim() ||
-                    form.epochs < 5 ||
+                    form.epochs < 1 ||
                     form.epochs > 100 ||
                     !Number.isInteger(form.epochs)))
               }

@@ -454,7 +454,7 @@ export function Architecture({
     {
       name: "EC2 Auto Scaling",
       icon: Server,
-      info: `${workers === undefined ? "Nhóm máy xử lý" : workers + " máy xử lý"} · ${instance ? (instance.startsWith("g") ? "GPU" : "CPU") : task.group === "Thị giác máy tính" ? "GPU" : "CPU"}`,
+      info: `${workers === undefined ? "Nhóm máy xử lý" : workers + " máy xử lý"} · ${instance ? (instance.startsWith("g") ? "GPU" : "CPU") : "CPU"}`,
     },
     { name: "S3 · kho mô hình", icon: Boxes, info: "Mô hình + chỉ số" },
     config.inferenceMode === "ec2"

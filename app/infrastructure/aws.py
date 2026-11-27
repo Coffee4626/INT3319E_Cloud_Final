@@ -172,13 +172,36 @@ class S3ArtifactStore:
         finally:
             obj["Body"].close()
 
-    def presign_upload(self, key, limit):
+    def save_file(self, key, path):
+        self.s3.upload_file(str(path), self.bucket, key, ExtraArgs={"ContentType": "application/zip"})
+
+    def download_bounded(self, key, path, limit):
+        try:
+            obj = self.s3.get_object(Bucket=self.bucket, Key=key)
+        except ClientError as exc:
+            if exc.response["Error"]["Code"] in ("NoSuchKey", "404"):
+                raise ValueError("Upload not found; upload the file first") from exc
+            raise
+        try:
+            if obj["ContentLength"] > limit:
+                raise ValueError("Image ZIP limit: 50 MB")
+            total = 0
+            with path.open("wb") as target:
+                for chunk in obj["Body"].iter_chunks(1024 * 1024):
+                    total += len(chunk)
+                    if total > limit:
+                        raise ValueError("Upload exceeds the size limit")
+                    target.write(chunk)
+        finally:
+            obj["Body"].close()
+
+    def presign_upload(self, key, limit, content_type="text/csv"):
         s3 = self.s3
         if os.getenv("S3_PUBLIC_ENDPOINT"):
             s3 = boto3.client("s3", endpoint_url=os.environ["S3_PUBLIC_ENDPOINT"],
                               config=Config(signature_version="s3v4", s3={"addressing_style": "path"}))
-        return s3.generate_presigned_post(self.bucket, key, Fields={"Content-Type": "text/csv"},
-            Conditions=[["content-length-range", 1, limit], {"Content-Type": "text/csv"}], ExpiresIn=900)
+        return s3.generate_presigned_post(self.bucket, key, Fields={"Content-Type": content_type},
+            Conditions=[["content-length-range", 1, limit], {"Content-Type": content_type}], ExpiresIn=900)
 
     def download(self, key, path):
         self.s3.download_file(self.bucket, key, str(path))

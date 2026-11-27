@@ -1,5 +1,5 @@
 """Shared contracts; no AWS or ML imports."""
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional, Protocol
 
@@ -22,11 +22,13 @@ class TrainingRequest:
     target: str
     task: str = "tabular"
     time_limit: int = 60
+    config: dict = field(default_factory=dict)
 
     @classmethod
     def parse(cls, data: dict):
         request = cls(csv=data.get("csv"), target=data.get("target"),
-                      task=data.get("task", "tabular"), time_limit=data.get("time_limit", 60))
+                      task=data.get("task", "tabular"), time_limit=data.get("time_limit", 60),
+                      config=data.get("config", {}))
         if not isinstance(request.csv, str) or not isinstance(request.target, str) or not request.target:
             raise ValueError("csv and target must be non-empty strings")
         if len(request.csv.encode()) > 10_000_000:
@@ -63,7 +65,9 @@ class JobRepository(Protocol):
 class ArtifactStore(Protocol):
     def save_csv(self, key: str, csv: str) -> None: ...
     def read_csv(self, key: str, limit: int) -> str: ...
-    def presign_upload(self, key: str, limit: int) -> dict: ...
+    def presign_upload(self, key: str, limit: int, content_type: str = "text/csv") -> dict: ...
+    def save_file(self, key: str, path: Path) -> None: ...
+    def download_bounded(self, key: str, path: Path, limit: int) -> None: ...
     def download(self, key: str, path: Path) -> None: ...
     def upload_model(self, key: str, directory: Path) -> None: ...
     def extract_model(self, key: str, directory: Path) -> None: ...

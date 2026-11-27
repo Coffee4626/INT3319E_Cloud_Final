@@ -3475,3 +3475,20 @@ body {
     scroll-behavior: auto !important;
   }
 }
+.st-image-picker { width:100%; min-height:260px; display:flex; flex-direction:column; gap:14px; align-items:center; justify-content:center; border:1px dashed #9fb9e6; border-radius:16px; background:#f4f8ff; color:#47668e; cursor:pointer; padding:20px; overflow:hidden; }
+.st-image-picker img { display:block; max-width:100%; max-height:400px; border-radius:8px; object-fit:contain; }
+.st-mask-preview { position:relative; width:100%; border-radius:12px; overflow:hidden; background:#eef2f7; }
+.st-mask-preview > img:first-child { display:block; width:100%; height:auto; }
+.st-mask-layer { position:absolute; inset:0; width:100%; height:100%; }
+.st-overlay-control { display:grid; gap:8px; margin:18px 0; }
+.st-overlay-control input { width:100%; accent-color:#3478f5; }
+.st-class-scores { display:grid; gap:14px; margin:20px 0; max-height:320px; overflow:auto; }
+.st-class-scores > div { display:grid; grid-template-columns:1fr auto; gap:7px 16px; align-items:center; font-size:13px; }
+.st-class-scores span { display:flex; gap:9px; align-items:center; overflow-wrap:anywhere; }
+.st-class-scores i { width:12px; height:12px; border-radius:3px; flex-shrink:0; }
+.st-class-scores meter { grid-column:1 / -1; width:100%; height:10px; }
+.st-class-scores meter::-webkit-meter-optimum-value { background:#3478f5; }
+.st-image-label { display:grid; gap:8px; padding:24px; background:#f0f6ff; border-radius:14px; margin-top:16px; }
+.st-image-label strong { font-size:32px; color:#142b50; overflow-wrap:anywhere; }
+.st-image-label span { color:#356ed5; }
+.st-image-json { max-height:520px; overflow:auto; word-break:break-all; }

@@ -62,22 +62,6 @@ test("CSV schema detects duplicate headers, wrong row width, format and empty fi
   assert.equal(value.count, 2);
   assert.deepEqual(value.columns, ["x", "y"]);
 });
-test("NLP and forecasting enforce task-specific columns and temporal order", async () => {
-  await assert.rejects(
-    inspectFile(file("x,y\n1,2\n3,4"), taskById("text-classification")),
-  );
-  await assert.rejects(
-    inspectFile(
-      file("timestamp,target\n2026-01-02,10\n2026-01-01,20"),
-      taskById("forecasting"),
-    ),
-  );
-  const value = await inspectFile(
-    file("timestamp,target\n2026-01-01,10\n2026-01-02,20"),
-    taskById("forecasting"),
-  );
-  assert.equal(value.count, 2);
-});
 test("ZIP classification requires valid split/class hierarchy", async () => {
   const t = taskById("image-classification");
   await assert.rejects(
@@ -98,7 +82,7 @@ test("ZIP classification requires valid split/class hierarchy", async () => {
   assert.equal(d.classes, 2);
   assert.equal(d.count, 4);
 });
-test("Segmentation and detection require a matching annotation for each image", async () => {
+test("Segmentation requires a matching mask for each image", async () => {
   const names = ["images/train/1.jpg", "images/val/2.jpg"];
   await assert.rejects(
     inspectFile(
@@ -115,21 +99,7 @@ test("Segmentation and detection require a matching annotation for each image", 
     ).count,
     2,
   );
-  await assert.rejects(
-    inspectFile(
-      zip([...names, "data.yaml", "labels/train/1.txt"]),
-      taskById("object-detection"),
-    ),
-  );
-  assert.equal(
-    (
-      await inspectFile(
-        zip([...names, "data.yaml", "labels/train/1.txt", "labels/val/2.txt"]),
-        taskById("object-detection"),
-      )
-    ).count,
-    2,
-  );
+
 });
 test("ZIP rejects traversal, truncated data and huge entry counts", async () => {
   const t = taskById("image-classification");
@@ -144,9 +114,11 @@ test("ZIP rejects traversal, truncated data and huge entry counts", async () => 
     ),
   );
 });
-test("Eight tasks have explicit models and data contracts", () => {
-  assert.equal(TASKS.length, 8);
-  assert.equal(new Set(TASKS.map((t) => t.id)).size, 8);
+test("Supported image and tabular tasks have explicit models and data contracts", () => {
+  assert.equal(TASKS.length, 4);
+  assert.equal(new Set(TASKS.map((t) => t.id)).size, 4);
+  assert.deepEqual(TASKS.filter(t => t.group === "Thị giác máy tính").map(t => t.id), ["image-classification", "segmentation"]);
+  assert.ok(TASKS.every(t => t.live));
   for (const t of TASKS) {
     assert.ok(t.models.length);
     assert.ok(t.structure);

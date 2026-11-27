@@ -38,7 +38,7 @@ const m = (
   description: string,
   size = "224 × 224",
 ): ModelSpec => ({ id, name, family, description, size });
-export const TASKS: TaskSpec[] = [
+const CATALOG: TaskSpec[] = [
   {
     id: "image-classification",
     name: "Phân loại hình ảnh",
@@ -55,25 +55,10 @@ export const TASKS: TaskSpec[] = [
     metric: "accuracy",
     metricLabel: "Độ chính xác",
     color: "#568bff",
+    live: true,
     models: [
-      m(
-        "resnet50",
-        "ResNet-50",
-        "CNN",
-        "Mạng kết nối dư cân bằng giữa độ chính xác và độ phức tạp.",
-      ),
-      m(
-        "efficientnet",
-        "EfficientNet-B0",
-        "CNN tinh gọn",
-        "Mạng trích xuất đặc trưng gọn cho thử nghiệm và triển khai dự đoán.",
-      ),
-      m(
-        "vit",
-        "ViT-B/16",
-        "Transformer",
-        "Học quan hệ giữa các mảnh ảnh trong hình ảnh.",
-      ),
+      m("mobilenet-v3", "MobileNet V3 Small", "CNN · ImageNet", "Bộ mã hóa đã học trên ImageNet, huấn luyện đầu phân loại. Gọn và phù hợp CPU.", "64–256 px"),
+      m("resnet18", "ResNet-18", "CNN · ImageNet", "Giữ bộ mã hóa và học đầu phân loại theo bộ nhãn của bạn.", "64–256 px"),
     ],
   },
   {
@@ -128,32 +113,14 @@ export const TASKS: TaskSpec[] = [
     accept: ".zip",
     format: "ZIP · ảnh + mặt nạ PNG",
     structure:
-      "dataset.zip\n├── classes.json\n├── images/\n│   ├── train/001.jpg\n│   └── val/002.jpg\n└── masks/\n    ├── train/001.png\n    └── val/002.png\n\n# Mặt nạ PNG: mỗi điểm ảnh chứa mã lớp.",
+      "dataset.zip\n├── classes.json\n├── images/\n│   ├── train/001.jpg\n│   └── val/002.jpg\n└── masks/\n    ├── train/001.png\n    └── val/002.png\n\n# classes.json: [\"background\", \"object\"]\n# Mặt nạ PNG 8-bit: 0, 1… là mã lớp; 255 bỏ qua.",
     metric: "miou",
     metricLabel: "IoU trung bình",
     color: "#a78bfa",
+    live: true,
     models: [
-      m(
-        "deeplab",
-        "DeepLabV3",
-        "CNN · ResNet-50",
-        "Tích chập giãn để giữ chi tiết không gian.",
-        "512 × 512",
-      ),
-      m(
-        "unet",
-        "U-Net",
-        "Mã hóa – giải mã",
-        "Kết nối tắt kết hợp đặc trưng và chi tiết.",
-        "512 × 512",
-      ),
-      m(
-        "segformer",
-        "SegFormer-B0",
-        "Transformer",
-        "Bộ mã hóa phân cấp với đầu phân đoạn gọn.",
-        "512 × 512",
-      ),
+      m("unet", "U-Net Small", "Mã hóa – giải mã", "Huấn luyện toàn bộ mạng gọn, gồm hai tầng kết nối tắt, trên ảnh và mặt nạ của bạn.", "64–256 px"),
+      m("deeplab-mobile", "DeepLabV3 MobileNet", "CNN · COCO", "Giữ bộ mã hóa đã học và tinh chỉnh đầu phân đoạn theo các lớp của bạn.", "64–256 px"),
     ],
   },
   {
@@ -338,6 +305,7 @@ export const TASKS: TaskSpec[] = [
     ],
   },
 ];
+export const TASKS = CATALOG.filter((task) => ["image-classification", "segmentation", "classification", "regression"].includes(task.id));
 export const taskById = (id: string) =>
   TASKS.find((task) => task.id === id) || TASKS[0];
 export const modelById = (task: TaskSpec, id: string) =>
@@ -347,6 +315,7 @@ export type RunConfig = {
   taskId: TaskId;
   modelIds: string[];
   epochs: number;
+  imageSize: number;
   batchSize: number;
   learningRate: number;
   trainSplit: number;
@@ -370,12 +339,13 @@ export function defaultConfig(
     name: task.vi + " · thí nghiệm",
     taskId,
     modelIds: [task.models[0].id],
-    epochs: 30,
-    batchSize: 32,
+    epochs: 5,
+    imageSize: 128,
+    batchSize: 4,
     learningRate: 0.001,
     trainSplit: 80,
-    instance: task.group === "Thị giác máy tính" ? "g4dn.xlarge" : "t3.large",
-    maxWorkers: 2,
+    instance: "m7i-flex.large",
+    maxWorkers: 1,
     augment: true,
     normalize: true,
     earlyStopping: true,
@@ -384,6 +354,6 @@ export function defaultConfig(
     count: 0,
     classes: 0,
     target: "",
-    timeLimit: 60,
+    timeLimit: task.group === "Thị giác máy tính" ? 300 : 60,
   };
 }

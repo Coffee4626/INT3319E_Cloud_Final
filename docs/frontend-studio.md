@@ -4,21 +4,24 @@ The frontend at `http://localhost:3000` uses a light workspace with blue control
 white surfaces, and dark typography. It includes a landing page, illustrated task
 catalog, task-first experiment wizard, model registry, inference playground, and
 interactive AWS/data-lineage diagrams. Task selection includes image classification,
-object detection, semantic segmentation, instance segmentation, tabular classification,
-tabular regression, text classification, and time-series forecasting.
+semantic segmentation, tabular classification and tabular regression.
 
 ## Runtime boundaries
 
 - Experiments, datasets, deployments, evaluation scores, learning curves and
   predictions come from the configured API. No generated experiment/metric/endpoint
   history is injected into the UI.
-- The current worker supports AutoGluon / LightGBM classification and regression.
-  Other tasks expose model configuration and validate dataset structure; their Train
-  action stays unavailable until their runtime is installed. A configuration can be
-  downloaded for review.
-- CSV profiles and preprocessing use the existing upload/preprocess APIs. ZIP checks
-  inspect central-directory paths and annotation pairings, not decoded image or mask
-  content. The future task runtime must validate those contents before training.
+- The worker supports LightGBM for tabular tasks and MobileNet/ResNet-18/U-Net/DeepLabV3 for images.
+  See [image-workflows.md](image-workflows.md) for exact models, formats and limits.
+- Wizard files and settings stay in browser memory until the final Start action. It then uploads,
+  validates, prepares and submits one job. A synchronous UI guard plus server submission UUID
+  prevent duplicate jobs on repeated clicks/retries. Preparing datasets alone never enqueues work.
+- Browser ZIP validation checks paths and pairings. The controller validates decoded mask IDs,
+  image dimensions, file safety and bounds before taking an immutable snapshot. Workers revalidate.
+- Image inference supports local preview, explicit prediction, class probabilities, segmentation
+  overlays with opacity control, class coverage and download of the class-ID PNG.
+- Image epoch loss and validation metrics are measured on real data. The supplied val split selects
+  checkpoints and is labeled as validation, not an independent test split.
 - Architecture diagrams describe the pipeline. EC2 worker counts remain unavailable
   without telemetry; job status is never used to invent instance counts. The AWS
   setup snapshot is dated, not a live account monitor.

@@ -29,12 +29,17 @@ import {
   type Page,
 } from "../api";
 import { Architecture, DataEvolution, LineChart, TaskArt } from "./Visuals";
-import { taskById } from "./catalog";
+import { TASKS, taskById } from "./catalog";
+import { ImageInference } from "./ImageInference";
 import { downloadText } from "./data";
 const metricName = (name?: string) =>
   name
     ? ({
         accuracy: "Độ chính xác",
+        cross_entropy: "Mất mát cross-entropy",
+        pixel_accuracy: "Độ chính xác điểm ảnh",
+        miou: "IoU trung bình",
+        dice: "Điểm Dice",
         balanced_accuracy: "Độ chính xác cân bằng",
         f1: "Điểm F1",
         f1_weighted: "F1 có trọng số",
@@ -194,7 +199,7 @@ export function WorkspaceStats() {
         <div>
           <Layers3 size={21} />
           <div>
-            <strong>8</strong>
+            <strong>{TASKS.length}</strong>
             <span>Bài toán học máy</span>
           </div>
         </div>
@@ -399,7 +404,7 @@ export function Registry({ go }: { go: (p: string) => void }) {
                 key={j.id + m.model}
               >
                 <TaskArt
-                  id={j.task === "regression" ? "regression" : "classification"}
+                  id={taskById(j.task === "tabular" ? "classification" : j.task).id}
                 />
                 <div className="st-panel-head">
                   <h3>{m.model}</h3>
@@ -526,7 +531,8 @@ export function Experiment({
       </>
     );
   const done = job.status === "COMPLETED",
-    taskId = job.task === "regression" ? "regression" : "classification",
+    taskId = taskById(job.task === "tabular" ? "classification" : job.task).id,
+    vision = taskId === "image-classification" || taskId === "segmentation",
     models = job.metrics?.leaderboard || [],
     model =
       models.find((m) => m.model === selected) ||
@@ -550,7 +556,7 @@ export function Experiment({
           <div className="st-eyebrow">THÍ NGHIỆM / {id.slice(0, 8)}</div>
           <h1>{job.name}</h1>
           <p>
-            {taskById(taskId).name} · Cột mục tiêu: {job.target}
+            {taskById(taskId).name}{!vision && ` · Cột mục tiêu: ${job.target}`}
           </p>
         </div>
         <div className="st-actions">
@@ -643,8 +649,7 @@ export function Experiment({
             <div>
               <h2>Hiểu mô hình của bạn.</h2>
               <p>
-                Kiểm định dùng để chọn mô hình; tập kiểm tra được giữ riêng để đánh
-                giá.
+                {vision ? "Chỉ số được đo trên thư mục val riêng. Mô hình được chọn theo mất mát kiểm định thấp nhất; đây không phải tập kiểm tra độc lập." : "Kiểm định dùng để chọn mô hình; tập kiểm tra được giữ riêng để đánh giá."}
               </p>
             </div>
             {models.length > 0 && (
@@ -674,7 +679,7 @@ export function Experiment({
                     <div className="st-metric" key={name}>
                       <span>{metricName(name)}</span>
                       <strong>{value.toFixed(4)}</strong>
-                      <small>Tập kiểm tra · mô hình tốt nhất</small>
+                      <small>{vision ? "Tập kiểm định val" : "Tập kiểm tra"} · mô hình tốt nhất</small>
                     </div>
                   ))
                 ) : (
@@ -743,13 +748,12 @@ export function Experiment({
                       <dd>{model?.fit_time?.toFixed(2) ?? "—"}s</dd>
                     </div>
                     <div>
-                      <dt>Số mẫu kiểm tra</dt>
-                      <dd>{job.metrics?.evaluation?.test_rows ?? "—"}</dd>
+                      <dt>{vision ? "Số ảnh kiểm định" : "Số mẫu kiểm tra"}</dt>
+                      <dd>{(vision ? job.metrics?.evaluation?.validation_rows : job.metrics?.evaluation?.test_rows) ?? "—"}</dd>
                     </div>
                   </dl>
                   <p className="st-muted">
-                    AutoGluon quy điểm kiểm định về “cao hơn tốt hơn”; chỉ số
-                    dạng mất mát có thể mang dấu âm.
+                    {vision ? `${job.metrics?.epochs_completed || 0} vòng đã chạy. ${job.metrics?.stop_reason === "time_limit" ? "Dừng theo giới hạn thời gian (hoàn tất đánh giá vòng hiện tại)." : job.metrics?.stop_reason === "early_stopping" ? "Dừng sớm sau 3 vòng không cải thiện." : "Hoàn tất số vòng đã cấu hình."}` : "AutoGluon quy điểm kiểm định về cao hơn tốt hơn; chỉ số dạng mất mát có thể mang dấu âm."}
                   </p>
                 </div>
               </div>
@@ -1104,7 +1108,8 @@ export function Inference({
     parsed.length > 0 &&
     parsed.length <= 100 &&
     parsed.every((v) => v && typeof v === "object" && !Array.isArray(v));
-  const curl = `curl '${endpoint}' \\\n  -H 'Content-Type: application/json' \\\n  -H 'X-Api-Key: YOUR_DEPLOYMENT_KEY' \\\n  --data '${JSON.stringify({ rows: valid ? parsed : [] }).replace(/'/g, "'\\''")}'`;
+  const isVision = deployment?.task === "image-classification" || deployment?.task === "segmentation";
+  const curl = `curl '${endpoint}' \\\n  -H 'Content-Type: application/json' \\\n  -H 'X-Api-Key: YOUR_DEPLOYMENT_KEY' \\\n  --data '${JSON.stringify(isVision ? { image_base64: "BASE64_JPEG_PNG_WEBP" } : { rows: valid ? parsed : [] }).replace(/'/g, "'\\''")}'`;
   async function predict() {
     setBusy("predict");
     setError("");
@@ -1199,7 +1204,7 @@ export function Inference({
       </div>
       <div className="st-playground-toolbar">
         <Status status={deployment.status} />
-        <span className="st-muted">Cột mục tiêu: {deployment.target}</span>
+        <span className="st-muted">{isVision ? "Ảnh → " + (deployment.task === "segmentation" ? "mặt nạ từng điểm ảnh" : "nhãn và xác suất") : `Cột mục tiêu: ${deployment.target}`}</span>
       </div>
       <div className="st-panel st-api-key">
         <label>
@@ -1224,6 +1229,7 @@ export function Inference({
           đóng trang.
         </p>
       </div>
+      {isVision ? <ImageInference key={id} id={id} task={deployment.task} apiKey={key} inactive={inactive} /> : (
       <div className="st-playground-grid">
         <section className="st-panel">
           <div className="st-panel-head">
@@ -1392,6 +1398,7 @@ export function Inference({
           )}
         </section>
       </div>
+      )}
       <div className="st-panel">
         <div className="st-panel-head">
           <div>

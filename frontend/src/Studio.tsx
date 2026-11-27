@@ -345,7 +345,7 @@ function Landing({ go }: { go: (p: string) => void }) {
           </div>
           <div className="st-hero-meta">
             <span>
-              <Layers3 size={16} /> 8 bài toán học máy
+              <Layers3 size={16} /> {TASKS.length} bài toán học máy
             </span>
             <span>
               <Cloud size={16} /> Kiến trúc AWS

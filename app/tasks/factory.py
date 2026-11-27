@@ -26,9 +26,12 @@ class TaskFactory:
 
 def default_factory() -> TaskFactory:
     from app.tasks.tabular import AutoTabularTask, ClassificationTask, RegressionTask
+    from app.tasks.vision import ImageClassificationTask, SegmentationTask
 
     factory = TaskFactory()
     factory.register("tabular", AutoTabularTask)
     factory.register("classification", ClassificationTask)
     factory.register("regression", RegressionTask)
+    factory.register("image-classification", ImageClassificationTask)
+    factory.register("segmentation", SegmentationTask)
     return factory
